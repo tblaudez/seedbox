@@ -2,10 +2,10 @@ services:
   kavita:
     image: lscr.io/linuxserver/kavita:latest
     container_name: kavita
-    restart: always
+    restart: unless-stopped
     volumes:
       - configkavita:/config
-      - torrents:/torrents
+      - media:/data/media
       - /etc/localtime:/etc/localtime:ro
     environment:
       - TZ=${TZ}

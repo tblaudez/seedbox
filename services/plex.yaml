@@ -2,11 +2,10 @@ services:
   plex:
     image: ghcr.io/linuxserver/plex
     container_name: plex
-    restart: always
-    network_mode: host
+    restart: unless-stopped
     volumes:
       - configplex:/config
-      - torrents:/torrents
+      - media:/data/media
     environment:
       - PGID=${PGID}
       - PUID=${PUID}

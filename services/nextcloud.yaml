@@ -1,11 +1,10 @@
 services:
-  # See tools/init-setup-nextcloud.sh for first install
   nextcloud:
     depends_on:
       - mariadb
     image: linuxserver/nextcloud
     container_name: nextcloud
-    restart: always
+    restart: unless-stopped
     environment:
       - PGID=${PGID}
       - PUID=${PUID}
@@ -13,7 +12,7 @@ services:
     volumes:
       - confignextcloud:/config
       - nextclouddata:/data
-      - torrents:/torrents
+      - media:/data/media
       - config:/seedbox-config
 
 volumes:
