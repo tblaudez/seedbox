@@ -5,8 +5,13 @@ set -e
 # Load common functions
 source tools/tools.sh
 
-# Check that required tools are installed
-check_utilities
+# Check that yq is installed
+if ! which yq >/dev/null; then
+  echo "[$0] yq does not exist. Install it from here: https://github.com/mikefarah/yq/releases"
+  echo "[$0] Please install yq version 4 or above."
+  echo "[$0] Also, please make sure it is in the PATH."
+  exit 1
+fi
 
 SKIP_PULL=0
 DEBUG=0
