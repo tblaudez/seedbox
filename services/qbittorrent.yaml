@@ -2,9 +2,9 @@ services:
   qbittorrent:
     image: ghcr.io/hotio/qbittorrent
     container_name: qbittorrent
-    restart: always
+    restart: unless-stopped
     volumes:
-      - torrents:/torrents
+      - downloads:/data/media/downloads
       - configqbittorrent:/config
     environment:
       - PGID=${PGID}

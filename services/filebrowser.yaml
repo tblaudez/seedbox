@@ -1,12 +1,12 @@
 services:
-  homepage:
+  filebrowser:
     image: filebrowser/filebrowser:s6
     container_name: filebrowser
-    restart: always
+    restart: unless-stopped
     volumes:
+      - media:/srv
       - configfilebrowser:/config
       - dbfilebrowser:/database
-      - torrents:/srv
     environment:
       - PGID=${PGID}
       - PUID=${PUID}

@@ -12,8 +12,6 @@ services:
     volumes:
       - confignextcloud:/config
       - nextclouddata:/data
-      - media:/data/media
-      - config:/seedbox-config
 
 volumes:
   confignextcloud:
