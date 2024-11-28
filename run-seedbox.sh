@@ -2,14 +2,6 @@
 
 set -e
 
-# Check that jq is installed
-if ! which jq >/dev/null; then
-  echo "[$0] jq does not exist. Install it from here: https://stedolan.github.io/jq/download/"
-  echo "[$0] Please install jq version 1.5 or above."
-  echo "[$0] Also, please make sure it is in the PATH."
-  exit 1
-fi
-
 # Check that yq is installed
 if ! which yq >/dev/null; then
   echo "[$0] yq does not exist. Install it from here: https://github.com/mikefarah/yq/releases"
@@ -37,7 +29,8 @@ for i in "$@"; do
 done
 
 cleanup_on_exit() {
-  rm -f rules.props *-vpn.props config.json
+  rm -f rules.props *-vpn.props *-envfile.props config.json
+  [[ -d env ]] && rm -f env/*.tmp
 }
 trap cleanup_on_exit EXIT
 
@@ -56,9 +49,82 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
+if [[ ! -f .env.custom ]]; then
+  echo "[$0] ERROR. \".env.custom\" file not found. Please copy \".env.custom.sample\" and edit its values. Be aware that since v2.2 update, some variables from .env must be moved to .env.custom. When done, re-run this script."
+  exit 1
+fi
+
+if [[ ! -f docker-compose.yaml ]]; then
+  echo "[$0] ERROR. \"docker-compose.yaml\" file not found. Please copy \"docker-compose.sample.yaml\" and edit its values if you need customization. Then, re-run this script."
+  exit 1
+fi
+
+# Check if there are obsolete config still in .env but should be moved to .env.custom
+if [[ $(grep "^MYSQL_.*" .env | wc -l) != 0 || $(grep "^WIREGUARD_.*" .env | wc -l) != 0 || $(grep "^NEXTCLOUD_.*" .env | wc -l) != 0 || $(grep "^PORTAINER_.*" .env | wc -l) != 0 || $(grep "^FLOOD_PASSWORD.*" .env | wc -l) != 0 || $(grep "^CALIBRE_PASSWORD.*" .env | wc -l) != 0 || $(grep "^PAPERLESS_.*" .env | wc -l) != 0 ]]; then
+  echo "/!\ Some obsolete config has been detected in your .env."
+  echo "It should be moved in .env.custom as they apply to specific app (this is new since v2.2 update - see documentation)."
+  echo ""
+  echo "Please refer to the .env.custom file to see which variables should be ported to the new file."
+  echo "Exiting now as bad configuration for your services may break your config."
+  echo ""
+  echo "Run this script again when variables has been moved to the correct file."
+  read -r -p "Do you want more explanation (Y/n) ? " help_wanted
+  if [[ "$help_wanted" =~ ^([yY][eE][sS]|[yY])$ ]]
+  then
+      echo "These are the variables you must move to .env.custom:"
+      echo ""
+      echo "  Variables starting by \"MYSQL_\" (if there are some) ==> Add prefix MARIADB_ in .env.custom"
+      echo "  Variables starting by \"NEXTCLOUD_\" (if there are some) ==> Add another NEXTCLOUD_ prefix in .env.custom"
+      echo "  Variables starting by \"PAPERLESS_\" (if there are some) => Add another PAPERLESS_ prefix in .env.custom"
+      echo "  Variables starting by \"PORTAINER_\" (if there are some) ==> Add another PORTAINER_ prefix in .env.custom"
+      echo "  Variable named \"FLOOD_PASSWORD\" (if existing) ==> Add another FLOOD_ prefix in .env.custom"
+      echo "  Variable named \"CALIBRE_PASSWORD\" (if existing) ==> Add another CALIBRE_ prefix in .env.custom"
+      echo "  Variable named \"WIREGUARD_ENDPOINT\" (if existing) ==> Replace by GLUETUN_VPN_ENDPOINT_IP in .env.custom"
+      echo "  Variable named \"WIREGUARD_PORT\" (if existing) ==> Replace by GLUETUN_VPN_ENDPOINT_PORT in .env.custom"
+      echo "  Variable named \"WIREGUARD_PUBLIC_KEY\" (if existing) ==> Replace by GLUETUN_WIREGUARD_PUBLIC_KEY in .env.custom"
+      echo "  Variable named \"WIREGUARD_PRIVATE_KEY\" (if existing) ==> Replace by GLUETUN_WIREGUARD_PRIVATE_KEY in .env.custom"
+      echo "  Variable named \"WIREGUARD_PRESHARED_KEY\" (if existing) ==> Replace by GLUETUN_WIREGUARD_PRESHARED_KEY in .env.custom"
+      echo "  Variable named \"WIREGUARD_ADDRESS\" (if existing) ==> Replace by GLUETUN_WIREGUARD_ADDRESSES (**plural!**) in .env.custom"
+  else
+      echo "Ok bye."
+  fi
+  exit 1
+fi
+
 # Create/update http_auth file according to values in .env file
 source .env
 echo "${HTTP_USER}:${HTTP_PASSWORD}" > traefik/http_auth
+
+if [[ ! -d env ]]; then
+  mkdir -p env
+fi
+
+# Sanitize and extract variable (without prefixes) from .env.custom file
+# Input => $1 = app name (exemple traefik)
+# Output => app_name.env written with correct variables (exemple: traefik.env)
+extract_custom_env_file() {
+  # sed explanation:
+  #   1 => Remove all lines starting with a comment (#)
+  #   2 => Remove all empty lines
+  #   3 => Remove all lines *NOT* starting by [uppercase_app_name + "_"] (exemple TRAEFIK_)
+  #   4 => Remove the pattern [uppercase_app_name + "_"]
+  sed '/^#/d' .env.custom | sed '/^$/d' | sed -n "/^${1^^}_/p" | sed "s/^${1^^}_//g" > env/$1.env
+}
+
+## Traefik Certificate Resolver tweaks
+if [[ ! -z ${TRAEFIK_CUSTOM_ACME_RESOLVER} ]]; then
+  if [[ ! -f .env.custom ]]; then
+    echo "[$0] Error. You need to have a .env.custom in order to use TRAEFIK_CUSTOM_ACME_RESOLVER variable."
+    exit 1
+  fi
+  if [[ ${TRAEFIK_CUSTOM_ACME_RESOLVER} == "changeme" ]]; then
+    echo "[$0] Error. Wrong value for TRAEFIK_CUSTOM_ACME_RESOLVER variable."
+    exit 1
+  fi
+  yq 'del(.certificatesResolvers.le.acme.httpChallenge)' -i traefik/traefik.yaml
+  yq '(.certificatesResolvers.le.acme.dnsChallenge.provider="'${TRAEFIK_CUSTOM_ACME_RESOLVER}'")' -i traefik/traefik.yaml
+  extract_custom_env_file traefik
+fi
 
 # Docker-compose settings
 export COMPOSE_HTTP_TIMEOUT=240
@@ -82,39 +148,62 @@ echo "[$0] ***** Checking configuration... *****"
 
 yq eval -o json config.yaml > config.json
 
-if [[ ${CHECK_FOR_OUTDATED_CONFIG} == true ]]; then
+if [[ "${CHECK_FOR_OUTDATED_CONFIG}" == true ]]; then
   nb_services=$(cat config.json | jq '.services | length')
   nb_services_sample=$(yq eval -o json config.sample.yaml | jq '.services | length')
   if [[ $nb_services_sample -gt $nb_services ]]; then
     echo "[$0] There are more services in the config.sample.yaml than in your config.yaml"
     echo "[$0] You should check config.sample.yaml because it seems there are new services available for you:"
-    diff -u config.yaml config.sample.yaml | grep "name:" | grep -E "^\+" || true
+    diff -u config.yaml config.sample.yaml | grep "name:" | grep -E "^\+" | sed "s/+  - name:/-/g" || true
   fi
 fi
 
+# Internal function which checks another function's number ($2) and return a boolean instead
+check_result_service() {
+  #$1 => service
+  #$2 => nb to check
+  if [[ $2 == 0 ]]; then
+    false; return
+  elif [[ $2 == 1 ]]; then
+    true; return
+  else
+    echo "[$0] Error. Service \"$1\" is enabled more than once. Check your config.yaml file."
+    exit 1
+  fi
+}
+
+# Check if a service ($1) has been enabled in the config file
+is_service_enabled() {
+  local nb=$(cat config.json | jq --arg service $1 '[.services[] | select(.name==$service and .enabled==true)] | length')
+  check_result_service $1 $nb
+}
+
+# Check if a service ($1) has been enabled AND has vpn enabled in the config file
+has_vpn_enabled() {
+  local nb=$(cat config.json | jq --arg service $1 '[.services[] | select(.name==$service and .enabled==true and .vpn==true)] | length')
+  check_result_service $1 $nb
+}
+
 # Check if some services have vpn enabled, that gluetun itself is enabled
 nb_vpn=$(cat config.json | jq '[.services[] | select(.enabled==true and .vpn==true)] | length')
-gluetun_enabled=$(cat config.json | jq '[.services[] | select(.name=="gluetun" and .enabled==true)] | length')
-if [[ ${nb_vpn} -gt 0 && ${gluetun_enabled} == 0 ]]; then
+if [[ ${nb_vpn} -gt 0 ]] && ! is_service_enabled gluetun; then
   echo "[$0] ERROR. ${nb_vpn} VPN-enabled services have been enabled BUT gluetun has not been enabled. Please check your config.yaml file."
-  echo "[$0] ******* Exiting *******"
   exit 1
 fi
 
 # Determine what host Flood should connect to
 # => If deluge vpn is enabled => gluetun
 # => If deluge vpn is disabled => deluge
-if [[ $(cat config.json | jq '[.services[] | select(.name=="flood" and .enabled==true)] | length') -eq 1 ]]; then
+if is_service_enabled flood; then
   # Check that if flood is enabled, deluge should also be enabled
-  if [[ $(cat config.json | jq '[.services[] | select(.name=="deluge" and .enabled==false)] | length') -eq 1 ]]; then
+  if ! is_service_enabled deluge; then
     echo "[$0] ERROR. Flood is enabled but Deluge is not. Please either enable Deluge or disable Flood as Flood depends on Deluge."
-    echo "[$0] ******* Exiting *******"
     exit 1
   fi
   # Determine deluge hostname (for flood) based on the VPN status (enabled or not) of deluge
-  if [[ $(cat config.json | jq '[.services[] | select(.name=="deluge" and .enabled==true and .vpn==true)] | length') -eq 1 ]]; then
+  if has_vpn_enabled deluge; then
     export DELUGE_HOST="gluetun"
-  elif [[ $(cat config.json | jq '[.services[] | select(.name=="deluge" and .enabled==true and .vpn==false)] | length') -eq 1 ]]; then
+  else
     export DELUGE_HOST="deluge"
   fi
 
@@ -131,12 +220,15 @@ if [[ $(cat config.json | jq '[.services[] | select(.name=="flood" and .enabled=
 fi
 
 # Check that if calibre-web is enabled, calibre should also be enabled
-if [[ $(cat config.json | jq '[.services[] | select(.name=="calibre-web" and .enabled==true)] | length') -eq 1 ]]; then
-  if [[ $(cat config.json | jq '[.services[] | select(.name=="calibre" and .enabled==false)] | length') -eq 1 ]]; then
-    echo "[$0] ERROR. Calibre-web is enabled but Calibre is not. Please either enable Calibre or disable Calibre-web as Calibre-web depends on Calibre."
-    echo "[$0] ******* Exiting *******"
-    exit 1
-  fi
+if is_service_enabled calibre-web && ! is_service_enabled calibre; then
+  echo "[$0] ERROR. Calibre-web is enabled but Calibre is not. Please either enable Calibre or disable Calibre-web as Calibre-web depends on Calibre."
+  exit 1
+fi
+
+# Check that if nextcloud is enabled, mariadb should also be enabled
+if is_service_enabled nextcloud && ! is_service_enabled mariadb; then
+  echo "[$0] ERROR. Nextcloud is enabled but MariaDB is not. Please either enable MariaDB or disable Nextcloud as Nextcloud depends on MariaDB."
+  exit 1
 fi
 
 # Apply other arbitrary custom Traefik config files
@@ -147,7 +239,7 @@ for f in `find samples/custom-traefik -maxdepth 1 -mindepth 1 -type f | grep -E 
 done
 
 # Detect Synology devices for Netdata compatibility
-if [[ $(cat config.json | jq '[.services[] | select(.name=="netdata" and .enabled==true)] | length') -eq 1 ]]; then
+if is_service_enabled netdata; then
   if [[ $(uname -a | { grep synology || true; } | wc -l) -eq 1 ]]; then
     export OS_RELEASE_FILEPATH="/etc/VERSION"
   else
@@ -165,6 +257,8 @@ echo "[$0] ***** Generating configuration... *****"
 rm -f services/generated/*-vpn.yaml
 
 ALL_SERVICES="-f docker-compose.yaml"
+
+GLOBAL_ENV_FILE=".env"
 
 # Parse the config.yaml master configuration file
 for json in $(yq eval -o json config.yaml | jq -c ".services[]"); do
@@ -196,10 +290,80 @@ for json in $(yq eval -o json config.yaml | jq -c ".services[]"); do
   # go through gluetun (main vpn client service).
   if [[ ${vpn} == "true" ]]; then
     echo "services.${name}.network_mode: service:gluetun" > ${name}-vpn.props
-    yq -p=props ${name}-vpn.props > services/generated/${name}-vpn.yaml
+    yq -p=props ${name}-vpn.props -o yaml > services/generated/${name}-vpn.yaml
     rm -f ${name}-vpn.props
     # Append config/${name}-vpn.yaml to global list of files which will be passed to docker commands
     ALL_SERVICES="${ALL_SERVICES} -f services/generated/${name}-vpn.yaml"
+  fi
+
+  # For services with existing custom environment variables in .env.custom, 
+  # Extract those variables and add a docker-compose override file in order to load them
+  if [[ -f .env.custom ]]; then
+    if grep -q "^${name^^}_.*" .env.custom; then
+      extract_custom_env_file ${name}
+      echo "services.${name}.env_file.0: ./env/${name}.env" > ${name}-envfile.props
+      yq -p=props ${name}-envfile.props -o yaml > services/generated/${name}-envfile.yaml
+      rm -f ${name}-envfile.props
+      # Append config/${name}-envfile.yaml to global list of files which will be passed to docker commands
+      ALL_SERVICES="${ALL_SERVICES} -f services/generated/${name}-envfile.yaml"
+    fi
+  fi
+
+  ###### For services which have "command" field with environment variables ######
+  var_in_cmd_detected="0"
+  if [[ $(yq ".services.${name}.command[]" services/${file} | { grep "\\$.*\}" || true; } | wc -l) -gt 0 ]]; then
+    var_in_cmd_detected="1"
+    echo-debug "[$0] Service ${name} has a command with environment variables..."
+    # Extract variable names to test them
+    yq ".services.${name}.command[]" services/${file} | { grep "\\$.*\}" || true; } | sed -n -e 's/.*${\(\w\+\)}.*/\1/p' > env/${name}-cmd.env.1.tmp
+    (
+      # Check if these variables are defined in generated .env files (global or custom)
+      set -a
+      source ./env/${name}.env
+      source .env
+      set +a
+      while read p; do
+        # If the command references a variable which is not known, throw an error
+        if [[ -z ${!p+x} ]]; then
+          echo "ERROR. Variable \"$p\" is referenced in \"command\" for service ${name} (file $file) but this variable is not defined in .env (or in .env.custom with prefix \"${name^^}_\"). Please correct it or add a variable which will be used."
+          exit 1
+        fi
+      done < env/${name}-cmd.env.1.tmp
+
+      # Does not work for now because of how docker handles merges for arrays. Original values with variables stay.
+      # Disabled for now
+      if [[ "0" == "1" ]]; then
+        # Extract command block from original service yaml file
+        yq ".services.${name}.command[]" services/${file} > env/${name}-cmd.env.2.tmp
+        # Envsubst this file
+        envsubst < env/${name}-cmd.env.2.tmp > env/${name}-cmd.env.3.tmp
+        # Convert this file to a props file, used to source a new proper YAML file
+        i=0
+        while read line; do
+          echo "services.${name}.command.$i: $line" >> env/${name}-cmd.env.4.tmp
+          i=$((i+1))
+        done < env/${name}-cmd.env.3.tmp
+        # Generate a proper override file with substituted variables
+        yq -p=props env/${name}-cmd.env.4.tmp -o yaml > services/generated/${name}-command.yaml
+      fi
+    )
+    rm -f env/*.tmp
+    # echo-debug "[$0] Adding override file for service ${name} / command with subsituted environment variables..."
+    # ALL_SERVICES="${ALL_SERVICES} -f services/generated/${name}-command.yaml"
+  fi
+
+  # Handle case for command in a single line, not in array
+  if [[ $(yq ".services.${name}.command" services/${file} | { grep "\\$.*\}" || true; } | wc -l) -gt 0 ]]; then
+    var_in_cmd_detected="1"
+  fi
+
+  # Workaround for now
+  if [[ "${var_in_cmd_detected}" == "1" ]]; then
+    cat ${GLOBAL_ENV_FILE} ./env/${name}.env >> .env.concat.tmp
+    rm -f .env.concat
+    mv .env.concat.tmp .env.concat
+    export GLOBAL_ENV_FILE=".env.concat"
+    var_in_cmd_detected="0"
   fi
 
   ###################################### TRAEFIK RULES ######################################
@@ -273,7 +437,7 @@ done
 
 # Convert properties files into Traefik-ready YAML and place it in the correct folder loaded by Traefik
 mv traefik/custom/dynamic-rules.yaml traefik/custom/dynamic-rules-old.yaml || true
-yq -p=props rules.props > traefik/custom/dynamic-rules.yaml
+yq -p=props rules.props -o yaml > traefik/custom/dynamic-rules.yaml
 rm -f rules.props
 
 # Post-transformations on the rules file
@@ -295,8 +459,9 @@ if [[ "${SKIP_PULL}" != "1" ]]; then
 fi
 
 echo "[$0] ***** Recreating containers if required... *****"
-${DOCKER_COMPOSE_BINARY} ${ALL_SERVICES} up -d --remove-orphans
+${DOCKER_COMPOSE_BINARY} --env-file ${GLOBAL_ENV_FILE} ${ALL_SERVICES} up -d --remove-orphans
 echo "[$0] ***** Done updating containers *****"
+rm -f .env.concat
 
 echo "[$0] ***** Clean unused images and volumes... *****"
 docker image prune -af
