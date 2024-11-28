@@ -2,9 +2,6 @@
 
 set -e
 
-# Load common functions
-source tools/tools.sh
-
 # Check that yq is installed
 if ! which yq >/dev/null; then
   echo "[$0] yq does not exist. Install it from here: https://github.com/mikefarah/yq/releases"

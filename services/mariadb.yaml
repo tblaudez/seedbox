@@ -8,12 +8,12 @@ services:
       environment:
         - TZ=${TZ}
       volumes: 
-        - nextclouddb:/var/lib/mysql
+        - nextclouddata:/var/lib/mysql
       labels:
         - "traefik.enable=false"
 
 volumes:
-  nextclouddb:
-    driver: local-persist
-    driver_opts:
-      mountpoint: $HOST_CONFIG_PATH/nextcloud-db
+  nextclouddata:
+      driver: local-persist
+      driver_opts:
+        mountpoint: $HOST_CONFIG_PATH/nextcloud-data
