@@ -2,13 +2,21 @@
 
 set -e
 
-# Check that yq is installed
-if ! which yq >/dev/null; then
-  echo "[$0] yq does not exist. Install it from here: https://github.com/mikefarah/yq/releases"
-  echo "[$0] Please install yq version 4 or above."
-  echo "[$0] Also, please make sure it is in the PATH."
-  exit 1
-fi
+ # Check that jq is installed
+  if ! which jq >/dev/null; then
+    echo "[$0] jq does not exist. Install it from here: https://stedolan.github.io/jq/download/"
+    echo "[$0] Please install jq version 1.5 or above."
+    echo "[$0] Also, please make sure it is in the PATH."
+    exit 1
+  fi
+
+  # Check that yq is installed
+  if ! which yq >/dev/null; then
+    echo "[$0] yq does not exist. Install it from here: https://github.com/mikefarah/yq/releases"
+    echo "[$0] Please install yq version 4 or above."
+    echo "[$0] Also, please make sure it is in the PATH."
+    exit 1
+  fi
 
 SKIP_PULL=0
 DEBUG=0
@@ -60,7 +68,7 @@ if [[ ! -f docker-compose.yaml ]]; then
 fi
 
 # Check if there are obsolete config still in .env but should be moved to .env.custom
-if [[ $(grep "^MYSQL_.*" .env | wc -l) != 0 || $(grep "^WIREGUARD_.*" .env | wc -l) != 0 || $(grep "^NEXTCLOUD_.*" .env | wc -l) != 0 || $(grep "^PORTAINER_.*" .env | wc -l) != 0 || $(grep "^FLOOD_PASSWORD.*" .env | wc -l) != 0 || $(grep "^CALIBRE_PASSWORD.*" .env | wc -l) != 0 || $(grep "^PAPERLESS_.*" .env | wc -l) != 0 ]]; then
+if grep -qE "^(MYSQL_|WIREGUARD_|NEXTCLOUD_|PORTAINER_|PAPERLESS_|FLOOD_PASSWORD|CALIBRE_PASSWORD).*" .env; then
   echo "/!\ Some obsolete config has been detected in your .env."
   echo "It should be moved in .env.custom as they apply to specific app (this is new since v2.2 update - see documentation)."
   echo ""
@@ -71,8 +79,7 @@ if [[ $(grep "^MYSQL_.*" .env | wc -l) != 0 || $(grep "^WIREGUARD_.*" .env | wc 
   read -r -p "Do you want more explanation (Y/n) ? " help_wanted
   if [[ "$help_wanted" =~ ^([yY][eE][sS]|[yY])$ ]]
   then
-      echo "These are the variables you must move to .env.custom:"
-      echo ""
+      echo -e "These are the variables you must move to .env.custom:\n"
       echo "  Variables starting by \"MYSQL_\" (if there are some) ==> Add prefix MARIADB_ in .env.custom"
       echo "  Variables starting by \"NEXTCLOUD_\" (if there are some) ==> Add another NEXTCLOUD_ prefix in .env.custom"
       echo "  Variables starting by \"PAPERLESS_\" (if there are some) => Add another PAPERLESS_ prefix in .env.custom"
@@ -251,7 +258,17 @@ ALL_SERVICES="-f docker-compose.yaml"
 GLOBAL_ENV_FILE=".env"
 
 # Parse the config.yaml master configuration file
-for json in $(yq eval -o json config.yaml | jq -c ".services[]"); do
+CONFIG_JSON=($(yq eval -o json config.yaml | jq -c ".services[]")) # Parenthesis to cast as Bash array
+CONFIG_JSON_INDEX=0
+
+for json in "${CONFIG_JSON[@]}"; do
+  # Progress indicator with constant width
+  printf "[%s] ***** Processing [%02d / %02d] *****\r" "$0" "$((++CONFIG_JSON_INDEX))" "${#CONFIG_JSON[@]}"
+  # Break progress line if loop is ending
+  if [[ "$CONFIG_JSON_INDEX" -eq "${#CONFIG_JSON[@]}" ]]; then
+    echo ""
+  fi
+
   name=$(echo $json | jq -r .name)
   enabled=$(echo $json | jq -r .enabled)
   vpn=$(echo $json | jq -r .vpn)
@@ -324,13 +341,13 @@ for json in $(yq eval -o json config.yaml | jq -c ".services[]"); do
       else
         echo "[$0] It seems you do not have permission to read or write to ${DELUGE_CONFIG_FILE} ."
         echo "[$0] Prompting for sudo password..."
-        sudo bash <<EOF
-if ! grep -q "flood" ${DELUGE_CONFIG_FILE}; then
-  echo "flood:${FLOOD_PASSWORD}:10" >> ${DELUGE_CONFIG_FILE}
-else
-  echo "[$0] No need to add user/password for flood as it has already been created."
-  echo "[$0] Consider setting FLOOD_AUTOCREATE_USER_IN_DELUGE_DAEMON variable to false in .env file."
-fi
+        sudo bash <<- EOF
+          if ! grep -q "flood" ${DELUGE_CONFIG_FILE}; then
+            echo "flood:${FLOOD_PASSWORD}:10" >> ${DELUGE_CONFIG_FILE}
+          else
+            echo "[$0] No need to add user/password for flood as it has already been created."
+            echo "[$0] Consider setting FLOOD_AUTOCREATE_USER_IN_DELUGE_DAEMON variable to false in .env file."
+          fi
 EOF
       fi
     else
