@@ -1,0 +1,16 @@
+services:
+  requestrr:
+    image: thomst08/requestrr
+    container_name: requestrr
+    restart: always
+    user: ${PUID}:${PGID}
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - configrequestrr:/root/config
+
+volumes:
+  configrequestrr: 
+    driver: local-persist
+    driver_opts:
+      mountpoint: $HOST_CONFIG_PATH/requestrr
