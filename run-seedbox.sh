@@ -101,7 +101,7 @@ fi
 
 # Sanitize and extract variable (without prefixes) from .env.custom file
 # Input => $1 = app name (exemple traefik)
-# Output => app_name.env written with correct variables (exemple: traefik.env)
+# Output => env/app_name.env written with correct variables (exemple: env/traefik.env)
 extract_custom_env_file() {
   # sed explanation:
   #   1 => Remove all lines starting with a comment (#)
@@ -206,17 +206,6 @@ if is_service_enabled flood; then
   else
     export DELUGE_HOST="deluge"
   fi
-
-  # Specific instructions for Flood
-  # User for Deluge daemon RPC has to be created in deluge auth config file
-  if [[ ! -z ${FLOOD_PASSWORD} && ${FLOOD_AUTOCREATE_USER_IN_DELUGE_DAEMON} == true ]]; then
-    if ! grep -q "flood" $HOST_CONFIG_PATH/deluge/auth; then
-      echo "flood:${FLOOD_PASSWORD}:10" >> $HOST_CONFIG_PATH/deluge/auth
-    else
-      echo "[$0] No need to add user/password for flood as it has already been created."
-      echo "[$0] Consider setting FLOOD_AUTOCREATE_USER_IN_DELUGE_DAEMON variable to false in .env file."
-    fi
-  fi
 fi
 
 # Check that if calibre-web is enabled, calibre should also be enabled
@@ -255,6 +244,7 @@ echo "[$0] ***** Generating configuration... *****"
 
 # Cleanup files before start, in case there was a change we start from scratch at every script execution
 rm -f services/generated/*-vpn.yaml
+rm -f services/generated/*-envfile.yaml
 
 ALL_SERVICES="-f docker-compose.yaml"
 
@@ -309,6 +299,47 @@ for json in $(yq eval -o json config.yaml | jq -c ".services[]"); do
     fi
   fi
 
+  # If we are on flood service AND autoconfig for flood password is set to true:
+  # Check that .env.custom exists and variable defined
+  # Do the deluge autoconfig - we already checked that deluge is enabled at this point
+  if [[ ${name} == "flood" && ${FLOOD_AUTOCREATE_USER_IN_DELUGE_DAEMON} == true ]]; then
+    # Specific instructions for Flood
+    if [[ ! -f env/${name}.env ]]; then
+      echo "ERROR. You set variable \"FLOOD_AUTOCREATE_USER_IN_DELUGE_DAEMON\" to true but you did not specify key \"FLOOD_FLOOD_PASSWORD\" in your .env.custom."
+      exit 1
+    fi
+    set -a
+    source env/${name}.env
+    set +a
+    # User for Deluge daemon RPC has to be created in deluge auth config file
+    if [[ ! -z ${FLOOD_PASSWORD} ]]; then
+      DELUGE_CONFIG_FILE="$HOST_CONFIG_PATH/deluge/auth"
+      if [[ -r $DELUGE_CONFIG_FILE && -w $DELUGE_CONFIG_FILE ]]; then
+        if ! grep -q "flood" ${DELUGE_CONFIG_FILE}; then
+          echo "flood:${FLOOD_PASSWORD}:10" >> ${DELUGE_CONFIG_FILE}
+        else
+          echo "[$0] No need to add user/password for flood as it has already been created."
+          echo "[$0] Consider setting FLOOD_AUTOCREATE_USER_IN_DELUGE_DAEMON variable to false in .env file."
+        fi
+      else
+        echo "[$0] It seems you do not have permission to read or write to ${DELUGE_CONFIG_FILE} ."
+        echo "[$0] Prompting for sudo password..."
+        sudo bash <<EOF
+if ! grep -q "flood" ${DELUGE_CONFIG_FILE}; then
+  echo "flood:${FLOOD_PASSWORD}:10" >> ${DELUGE_CONFIG_FILE}
+else
+  echo "[$0] No need to add user/password for flood as it has already been created."
+  echo "[$0] Consider setting FLOOD_AUTOCREATE_USER_IN_DELUGE_DAEMON variable to false in .env file."
+fi
+EOF
+      fi
+    else
+      echo "ERROR. \"FLOOD_FLOOD_PASSWORD\" variable seems not defined but flood service still has variables defined. Please add the missing variable."
+      exit 1
+    fi
+  fi
+
+
   ###### For services which have "command" field with environment variables ######
   var_in_cmd_detected="0"
   if [[ $(yq ".services.${name}.command[]" services/${file} | { grep "\\$.*\}" || true; } | wc -l) -gt 0 ]]; then
@@ -319,13 +350,16 @@ for json in $(yq eval -o json config.yaml | jq -c ".services[]"); do
     (
       # Check if these variables are defined in generated .env files (global or custom)
       set -a
-      source ./env/${name}.env
+      # Only source custom envfile if it exists
+      if [[ -f ./env/${name}.env ]]; then
+        source ./env/${name}.env
+      fi
       source .env
       set +a
       while read p; do
         # If the command references a variable which is not known, throw an error
         if [[ -z ${!p+x} ]]; then
-          echo "ERROR. Variable \"$p\" is referenced in \"command\" for service ${name} (file $file) but this variable is not defined in .env (or in .env.custom with prefix \"${name^^}_\"). Please correct it or add a variable which will be used."
+          echo "ERROR. Variable \"$p\" is referenced in \"command\" for service ${name} (file $file) but this variable is not defined in .env (or in .env.custom with prefix \"${name^^}_\" if existing). Please correct it or add a variable which will be used."
           exit 1
         fi
       done < env/${name}-cmd.env.1.tmp
@@ -359,10 +393,13 @@ for json in $(yq eval -o json config.yaml | jq -c ".services[]"); do
 
   # Workaround for now
   if [[ "${var_in_cmd_detected}" == "1" ]]; then
-    cat ${GLOBAL_ENV_FILE} ./env/${name}.env >> .env.concat.tmp
-    rm -f .env.concat
-    mv .env.concat.tmp .env.concat
-    export GLOBAL_ENV_FILE=".env.concat"
+    # Only concat .env.concat with env/${name}.env if it exists
+    if [[ -f ./env/${name}.env ]]; then
+      cat ${GLOBAL_ENV_FILE} ./env/${name}.env >> .env.concat.tmp
+      rm -f .env.concat
+      mv .env.concat.tmp .env.concat
+      export GLOBAL_ENV_FILE=".env.concat"
+    fi
     var_in_cmd_detected="0"
   fi
 
