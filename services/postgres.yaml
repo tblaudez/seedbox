@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes: 
+      - datapostgres:/var/lib/postgresql/data
+    labels:
+      - "traefik.enable=false"
+
+volumes:
+  datapostgres:
+    driver: local-persist
+    driver_opts:
+      mountpoint: $HOST_CONFIG_PATH/postgres

@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     volumes:
       - configtautulli:/config
-      - config:/logs:ro # Inside of tautulli, bind to logs via "/logs/Plex Media Server/Logs"
+      - configplex:/plex:ro # Inside of tautulli, bind to logs via "/logs/Plex Media Server/Logs"
     environment:
       - PGID=${PGID}
       - PUID=${PUID}

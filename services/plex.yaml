@@ -10,10 +10,11 @@ services:
       - PGID=${PGID}
       - PUID=${PUID}
       - TZ=${TZ}
-      - VERSION=latest
+      - VERSION=docker
+    shm_size: '4GB'
 
 volumes:
   configplex:
     driver: local-persist
     driver_opts:
-      mountpoint: $HOST_CONFIG_PATH/Plex
+      mountpoint: $HOST_CONFIG_PATH/plex

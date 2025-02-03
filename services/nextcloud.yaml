@@ -1,7 +1,5 @@
 services:
   nextcloud:
-    depends_on:
-      - mariadb
     image: linuxserver/nextcloud
     container_name: nextcloud
     restart: unless-stopped
@@ -11,14 +9,16 @@ services:
       - TZ=${TZ}
     volumes:
       - confignextcloud:/config
-      - nextclouddata:/data
+      - datanextcloud:/data
+    depends_on:
+      - postgres
 
 volumes:
   confignextcloud:
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/nextcloud
-  nextclouddata:
+  datanextcloud:
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/nextcloud-data

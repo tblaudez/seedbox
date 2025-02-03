@@ -2,21 +2,21 @@
 
 set -e
 
- # Check that jq is installed
-  if ! which jq >/dev/null; then
-    echo "[$0] jq does not exist. Install it from here: https://stedolan.github.io/jq/download/"
-    echo "[$0] Please install jq version 1.5 or above."
-    echo "[$0] Also, please make sure it is in the PATH."
-    exit 1
-  fi
+# Check that jq is installed
+if ! which jq >/dev/null; then
+  echo "[$0] jq does not exist. Install it from here: https://stedolan.github.io/jq/download/"
+  echo "[$0] Please install jq version 1.5 or above."
+  echo "[$0] Also, please make sure it is in the PATH."
+  exit 1
+fi
 
-  # Check that yq is installed
-  if ! which yq >/dev/null; then
-    echo "[$0] yq does not exist. Install it from here: https://github.com/mikefarah/yq/releases"
-    echo "[$0] Please install yq version 4 or above."
-    echo "[$0] Also, please make sure it is in the PATH."
-    exit 1
-  fi
+# Check that yq is installed
+if ! which yq >/dev/null; then
+  echo "[$0] yq does not exist. Install it from here: https://github.com/mikefarah/yq/releases"
+  echo "[$0] Please install yq version 4 or above."
+  echo "[$0] Also, please make sure it is in the PATH."
+  exit 1
+fi
 
 SKIP_PULL=0
 DEBUG=0
@@ -222,10 +222,10 @@ if is_service_enabled calibre-web && ! is_service_enabled calibre; then
 fi
 
 # Check that if nextcloud is enabled, mariadb should also be enabled
-if is_service_enabled nextcloud && ! is_service_enabled mariadb; then
-  echo "[$0] ERROR. Nextcloud is enabled but MariaDB is not. Please either enable MariaDB or disable Nextcloud as Nextcloud depends on MariaDB."
-  exit 1
-fi
+#if is_service_enabled nextcloud && ! is_service_enabled mariadb; then
+  #echo "[$0] ERROR. Nextcloud is enabled but MariaDB is not. Please either enable MariaDB or disable Nextcloud as Nextcloud depends on MariaDB."
+  #exit 1
+#fi
 
 # Apply other arbitrary custom Traefik config files
 rm -f $f traefik/custom/custom-*
