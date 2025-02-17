@@ -260,6 +260,8 @@ GLOBAL_ENV_FILE=".env"
 # Parse the config.yaml master configuration file
 CONFIG_JSON=($(yq eval -o json config.yaml | jq -c ".services[]")) # Parenthesis to cast as Bash array
 CONFIG_JSON_INDEX=0
+truncate -s0 "$HOME/.seedbox_services"
+
 
 for json in "${CONFIG_JSON[@]}"; do
   # Progress indicator with constant width
@@ -280,6 +282,7 @@ for json in "${CONFIG_JSON[@]}"; do
   fi
 
   echo-debug "[$0] ➡️  Parsing service: \"$name\"..."
+  printf "%s " "$name" >> "$HOME/.seedbox_services"
 
   # Default docker-compose filename is the service name + .yaml.
   # Take into account explicit filename if specified in config

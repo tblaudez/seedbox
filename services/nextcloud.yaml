@@ -2,23 +2,34 @@ services:
   nextcloud:
     image: linuxserver/nextcloud
     container_name: nextcloud
-    restart: unless-stopped
     environment:
       - PGID=${PGID}
       - PUID=${PUID}
       - TZ=${TZ}
     volumes:
-      - confignextcloud:/config
-      - datanextcloud:/data
+      - nextcloud-config:/config
+      - nextcloud-data:/data
     depends_on:
-      - postgres
+      - nextcloud-postgres
+    restart: unless-stopped
+    
+  nextcloud-postgres:
+    image: postgres:16-alpine
+    container_name: nextcloud-postgres
+    volumes: 
+      - nextcloud-db:/var/lib/postgresql/data
+    restart: unless-stopped
 
 volumes:
-  confignextcloud:
+  nextcloud-config:
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/nextcloud
-  datanextcloud:
+  nextcloud-data:
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/nextcloud-data
+  nextcloud-db:
+    driver: local-persist
+    driver_opts:
+      mountpoint: $HOST_CONFIG_PATH/nextcloud-db

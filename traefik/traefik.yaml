@@ -1,13 +1,13 @@
 api:
   dashboard: true
 # Set Access logs timezone
-# accessLog:
-#   fields:
-#     names:
-#       StartUTC: drop
+accessLog:
+  fields:
+    names:
+      StartUTC: drop
 providers:
   docker:
-    endpoint: "unix:///var/run/docker.sock"
+    endpoint: "tcp://socket-proxy:2375"
     network: "traefik-network"
     exposedByDefault: false # Only expose explicitly enabled containers
   file:
