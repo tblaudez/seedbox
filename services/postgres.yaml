@@ -8,12 +8,12 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
     volumes: 
-      - datapostgres:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
     labels:
       - "traefik.enable=false"
 
 volumes:
-  datapostgres:
+  postgres-data:
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/postgres

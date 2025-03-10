@@ -4,7 +4,7 @@ services:
     container_name: sonarr
     restart: unless-stopped
     volumes:
-      - configsonarr:/config
+      - sonarr-config:/config
       - media:/data/media
       - /etc/localtime:/etc/localtime:ro
     environment:
@@ -14,7 +14,7 @@ services:
 
 
 volumes:
-  configsonarr: 
+  sonarr-config: 
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/sonarr

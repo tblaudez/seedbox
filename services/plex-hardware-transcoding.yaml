@@ -7,7 +7,7 @@ services:
     devices:
       - /dev/dri:/dev/dri # for hardware transcoding
     volumes:
-      - configplex:/config
+      - plex-config:/config
       - media:/data/media
       - /dev/shm:/transcode
     environment:
@@ -17,7 +17,7 @@ services:
       - VERSION=latest
 
 volumes:
-  configplex:
+  plex-config:
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/Plex

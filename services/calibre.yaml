@@ -10,11 +10,11 @@ services:
       # - PASSWORD=${UN1K0RN_PASSWORD}
       # - CLI_ARGS=
     volumes:
-      - configcalibre:/config
+      - calibre-config:/config
       - media:/data/media
 
 volumes:
-  configcalibre: 
+  calibre-config: 
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/calibre

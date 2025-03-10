@@ -14,12 +14,12 @@ services:
       - --depass=${FLOOD_PASSWORD}
       - --rundir=/config
     volumes:
-      - configflood:/config
+      - flood-config:/config
       - downloads:/data/media/downloads
       - /etc/localtime:/etc/localtime:ro
 
 volumes:
-  configflood: 
+  flood-config: 
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/flood

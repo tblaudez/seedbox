@@ -13,7 +13,7 @@ services:
       - TZ=${TZ}
 
 volumes:
-  configgluetun:
+  gluetun-config:
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/gluetun

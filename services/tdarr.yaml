@@ -13,7 +13,7 @@ services:
     volumes:
       - media:/data/media
       - transcode:/temp
-      - configtdarrv2:/app/server
+      - tdarrv2-config:/app/server
       - settingstdarrv2:/app/configs
 
   tdarr_node:
@@ -37,7 +37,7 @@ services:
       - "traefik.enable=false"
 
 volumes:
-  configtdarrv2:
+  tdarrv2-config:
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/tdarrv2/server

@@ -4,15 +4,15 @@ services:
     container_name: tautulli
     restart: unless-stopped
     volumes:
-      - configtautulli:/config
-      - configplex:/plex:ro # Inside of tautulli, bind to logs via "/logs/Plex Media Server/Logs"
+      - tautulli-config:/config
+      - plex-config:/plex:ro # Inside of tautulli, bind to logs via "/logs/Plex Media Server/Logs"
     environment:
       - PGID=${PGID}
       - PUID=${PUID}
       - TZ=${TZ}
 
 volumes:
-  configtautulli:
+  tautulli-config:
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/tautulli

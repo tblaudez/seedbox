@@ -4,7 +4,7 @@ services:
     container_name: radarr
     restart: unless-stopped
     volumes:
-      - configradarr:/config
+      - radarr-config:/config
       - media:/data/media
       - /etc/localtime:/etc/localtime:ro
     environment:
@@ -13,7 +13,7 @@ services:
       - TZ=${TZ}
 
 volumes:
-  configradarr: 
+  radarr-config: 
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/radarr

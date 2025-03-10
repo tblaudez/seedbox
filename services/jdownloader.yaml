@@ -4,7 +4,7 @@ services:
     container_name: jdownloader
     restart: unless-stopped
     volumes:
-      - configjdownloader:/config
+      - jdownloader-config:/config
       - downloads:/output
     environment:
       - USER_ID=${PUID}
@@ -12,7 +12,7 @@ services:
       - TZ=${TZ}
 
 volumes:
-  configjdownloader:
+  jdownloader-config:
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/jdownloader

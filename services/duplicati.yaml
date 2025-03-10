@@ -8,12 +8,12 @@ services:
       - PGID=${PGID}
       - TZ=${TZ}
     volumes:
-      - configduplicati:/config
+      - duplicati-config:/config
       - backups:/backups
       - config:/source
 
 volumes:
-  configduplicati:
+  duplicati-config:
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/duplicati

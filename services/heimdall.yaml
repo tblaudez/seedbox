@@ -4,14 +4,14 @@ services:
     container_name: heimdall
     restart: unless-stopped
     volumes:
-      - configheimdall:/config
+      - heimdall-config:/config
     environment:
       - PGID=${PGID}
       - PUID=${PUID}
       - TZ=${TZ}
 
 volumes:
-  configheimdall:
+  heimdall-config:
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/heimdall

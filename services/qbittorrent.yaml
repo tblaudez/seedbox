@@ -5,14 +5,14 @@ services:
     restart: unless-stopped
     volumes:
       - downloads:/data/media/downloads
-      - configqbittorrent:/config
+      - qbittorrent-config:/config
     environment:
       - PGID=${PGID}
       - PUID=${PUID}
       - TZ=${TZ}
 
 volumes:
-  configqbittorrent: 
+  qbittorrent-config: 
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/qbittorrent

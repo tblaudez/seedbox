@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     volumes:
       - media:/srv
-      - configfilebrowser:/config
+      - filebrowser-config:/config
       - dbfilebrowser:/database
     environment:
       - PGID=${PGID}
@@ -18,7 +18,7 @@ services:
       retries: 3
 
 volumes:
-  configfilebrowser:
+  filebrowser-config:
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/filebrowser/config

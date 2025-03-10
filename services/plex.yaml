@@ -4,7 +4,7 @@ services:
     container_name: plex
     restart: unless-stopped
     volumes:
-      - configplex:/config
+      - plex-config:/config
       - media:/data/media
     environment:
       - PGID=${PGID}
@@ -14,7 +14,7 @@ services:
     shm_size: '4GB'
 
 volumes:
-  configplex:
+  plex-config:
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/plex

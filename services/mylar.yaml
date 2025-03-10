@@ -8,12 +8,12 @@ services:
       - PUID=${PUID}
       - TZ=${TZ}
     volumes:
-      - configmylar:/config
+      - mylar-config:/config
       - torrents:/comics
       - downloads:/downloads
 
 volumes:
-  configmylar: 
+  mylar-config: 
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/mylar

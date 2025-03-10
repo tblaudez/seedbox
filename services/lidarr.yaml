@@ -4,7 +4,7 @@ services:
     container_name: lidarr
     restart: unless-stopped
     volumes:
-      - configlidarr:/config
+      - lidarr-config:/config
       - media:/data/media
     environment:
       - PGID=${PGID}
@@ -12,7 +12,7 @@ services:
       - TZ=${TZ}
 
 volumes:
-  configlidarr:
+  lidarr-config:
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/lidarr

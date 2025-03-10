@@ -8,7 +8,7 @@ services:
       - PUID=${PUID}
       - TZ=${TZ}
     volumes:
-      - configsyncthing:/config
+      - syncthing-config:/config
       - media:/data/media
       - config:/allconfig
     ports:
@@ -18,7 +18,7 @@ services:
       - 21027:21027/udp
 
 volumes:
-  configsyncthing: 
+  syncthing-config: 
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/configsyncthing

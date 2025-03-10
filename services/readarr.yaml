@@ -4,7 +4,7 @@ services:
     container_name: readarr
     restart: unless-stopped
     volumes:
-      - configreadarr:/config
+      - readarr-config:/config
       - media:/data/media
       - /etc/localtime:/etc/localtime:ro
       - /data/config/readarr/scraper/certs/bookinfo-club.crt:/etc/ssl/certs/bookinfo-club.crt
@@ -14,7 +14,7 @@ services:
       - TZ=${TZ}
 
 volumes:
-  configreadarr: 
+  readarr-config: 
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/readarr

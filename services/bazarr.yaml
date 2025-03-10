@@ -5,14 +5,14 @@ services:
     restart: unless-stopped
     volumes:
       - media:/data/media
-      - configbazarr:/config
+      - bazarr-config:/config
     environment:
       - PGID=${PGID}
       - PUID=${PUID}
       - TZ=${TZ}
 
 volumes:
-  configbazarr:
+  bazarr-config:
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/bazarr
