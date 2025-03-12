@@ -11,13 +11,16 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./traefik:/etc/traefik:ro
-      - configtraefik:/config
+      - traefik-config:/config
     environment:
       - TRAEFIK_DOMAIN=${TRAEFIK_DOMAIN}
       - TZ=${TZ}
+    networks:
+      default:
+        ipv4_address: 172.18.0.250
 
 volumes:
-  configtraefik:
+  traefik-config:
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/traefik
