@@ -319,6 +319,8 @@ for json in "${CONFIG_JSON[@]}"; do
     fi
   fi
 
+  echo -n "$ALL_SERVICES" > "$HOME/.seedbox_files"
+
   # If we are on flood service AND autoconfig for flood password is set to true:
   # Check that .env.custom exists and variable defined
   # Do the deluge autoconfig - we already checked that deluge is enabled at this point
