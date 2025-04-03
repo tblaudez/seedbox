@@ -6,10 +6,10 @@ services:
     volumes:
       - overseerr-config:/config
     environment:
-      - PGID=${PGID}
-      - PUID=${PUID}
-      - TZ=${TZ}
-      - LOG_LEVEL=warn
+      PGID: ${PGID}
+      PUID: ${PUID}
+      TZ: ${TZ}
+      LOG_LEVEL: warn
     dns:
       - 1.1.1.1
       - 8.8.8.8

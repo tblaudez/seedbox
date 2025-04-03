@@ -7,9 +7,9 @@ services:
       - media:/data/media
       - bazarr-config:/config
     environment:
-      - PGID=${PGID}
-      - PUID=${PUID}
-      - TZ=${TZ}
+      PGID: ${PGID}
+      PUID: ${PUID}
+      TZ: ${TZ}
 
 volumes:
   bazarr-config:

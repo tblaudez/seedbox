@@ -13,8 +13,8 @@ services:
       - ./traefik:/etc/traefik:ro
       - traefik-config:/config
     environment:
-      - TRAEFIK_DOMAIN=${TRAEFIK_DOMAIN}
-      - TZ=${TZ}
+      TRAEFIK_DOMAIN: ${TRAEFIK_DOMAIN}
+      TZ: ${TZ}
     networks:
       default:
         ipv4_address: 172.18.0.250

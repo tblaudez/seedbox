@@ -11,10 +11,10 @@ services:
       - media:/data/media
       - /dev/shm:/transcode
     environment:
-      - PGID=${PGID}
-      - PUID=${PUID}
-      - TZ=${TZ}
-      - VERSION=latest
+      PGID: ${PGID}
+      PUID: ${PUID}
+      TZ: ${TZ}
+      VERSION: latest
 
 volumes:
   plex-config:

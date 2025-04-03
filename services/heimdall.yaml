@@ -6,9 +6,9 @@ services:
     volumes:
       - heimdall-config:/config
     environment:
-      - PGID=${PGID}
-      - PUID=${PUID}
-      - TZ=${TZ}
+      PGID: ${PGID}
+      PUID: ${PUID}
+      TZ: ${TZ}
 
 volumes:
   heimdall-config:

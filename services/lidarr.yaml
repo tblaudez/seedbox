@@ -7,9 +7,9 @@ services:
       - lidarr-config:/config
       - media:/data/media
     environment:
-      - PGID=${PGID}
-      - PUID=${PUID}
-      - TZ=${TZ}
+      PGID: ${PGID}
+      PUID: ${PUID}
+      TZ: ${TZ}
 
 volumes:
   lidarr-config:

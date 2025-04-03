@@ -7,9 +7,9 @@ services:
       - jdownloader-config:/config
       - downloads:/output
     environment:
-      - USER_ID=${PUID}
-      - GROUP_ID=${PGID}
-      - TZ=${TZ}
+      USER_ID: ${PUID}
+      GROUP_ID: ${PGID}
+      TZ: ${TZ}
 
 volumes:
   jdownloader-config:

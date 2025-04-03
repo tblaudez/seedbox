@@ -4,11 +4,11 @@ services:
     container_name: calibre-web
     restart: unless-stopped
     environment:
-      - PGID=${PGID}
-      - PUID=${PUID}
-      - TZ=${TZ}
-      - DOCKER_MODS=linuxserver/mods:universal-calibre
-      - OAUTHLIB_RELAX_TOKEN_SCOPE=1
+      PGID: ${PGID}
+      PUID: ${PUID}
+      TZ: ${TZ}
+      DOCKER_MODS: linuxserver/mods:universal-calibre
+      OAUTHLIB_RELAX_TOKEN_SCOPE: 1
     volumes:
       - calibre-config:/config
       - media:/data/media

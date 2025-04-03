@@ -4,9 +4,9 @@ services:
     container_name: mylar3
     restart: always
     environment:
-      - PGID=${PGID}
-      - PUID=${PUID}
-      - TZ=${TZ}
+      PGID: ${PGID}
+      PUID: ${PUID}
+      TZ: ${TZ}
     volumes:
       - mylar-config:/config
       - torrents:/comics

@@ -4,12 +4,12 @@ services:
     container_name: tdarr
     restart: unless-stopped
     environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-      - serverIP=0.0.0.0
-      - serverPort=8266
-      - webUIPort=8265
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+      serverIP: 0.0.0.0
+      serverPort: 8266
+      webUIPort: 8265
     volumes:
       - media:/data/media
       - transcode:/temp
@@ -21,14 +21,14 @@ services:
     container_name: tdarr_node
     restart: unless-stopped
     environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-      - nodeID=Node1
-      - nodeIP=tdarr_node
-      - nodePort=8267
-      - serverIP=tdarr
-      - serverPort=8266
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+      nodeID: Node1
+      nodeIP: tdarr_node
+      nodePort: 8267
+      serverIP: tdarr
+      serverPort: 8266
     volumes:
       - media:/data/media
       - transcode:/temp

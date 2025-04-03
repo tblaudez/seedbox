@@ -4,11 +4,11 @@ services:
     container_name: calibre
     restart: unless-stopped
     environment:
-      - PGID=${PGID}
-      - PUID=${PUID}
-      - TZ=${TZ}
-      # - PASSWORD=${UN1K0RN_PASSWORD}
-      # - CLI_ARGS=
+      PGID: ${PGID}
+      PUID: ${PUID}
+      TZ: ${TZ}
+      # PASSWORD: ${UN1K0RN_PASSWORD}
+      # CLI_ARGS: 
     volumes:
       - calibre-config:/config
       - media:/data/media
