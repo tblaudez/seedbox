@@ -198,6 +198,24 @@ if [[ ${nb_vpn} -gt 0 ]] && ! is_service_enabled gluetun; then
   exit 1
 fi
 
+# Check if some services have authelia enabled, that authelia itself is enabled
+nb_sso=$(cat config.json | jq '[.services[] | select(.enabled==true and .traefik.rules[].sso==true)] | length')
+authelia_enabled=$(cat config.json | jq '[.services[] | select(.name=="authelia" and .enabled==true)] | length')
+if [[ ${nb_sso} -gt 0 && ${authelia_enabled} == 0 ]]; then
+  echo "[$0] ERROR. ${nb_sso} Authelia-enabled services have been enabled BUT authelia itself has not been enabled. Please check your config.yaml file."
+  echo "[$0] ******* Exiting *******"
+  exit 1
+fi
+
+# Check that for a same rule, httpAuth and authelia are not both enabled
+# TODO: fix the condition to allow multiple auth on multiple Traefik rules for a service
+nb_both_auth=$(cat config.json | jq '[.services[] | select(.traefik.rules[].httpAuth==true and .traefik.rules[].sso==true)] | length')
+if [[ ${nb_both_auth} -gt 0 ]]; then
+  echo "[$0] ERROR. ${nb_both_auth} services have both SSO/Authelia and HTTP Authentication enabled. Please choose only one for a rule."
+  echo "[$0] ******* Exiting *******"
+  exit 1
+fi
+
 # Determine what host Flood should connect to
 # => If deluge vpn is enabled => gluetun
 # => If deluge vpn is disabled => deluge
@@ -442,9 +460,11 @@ EOF
     host=$(echo $rule | jq -r .host)
     internalPort=$(echo $rule | jq -r .internalPort)
     httpAuth=$(echo $rule | jq -r .httpAuth)
+    sso=$(echo $rule | jq -r .sso)
     echo-debug "[$0]      Host => ${host}"
     echo-debug "[$0]      Internal Port => ${internalPort}"
     echo-debug "[$0]      Http Authentication => ${httpAuth}"
+    echo-debug "[$0]      SSO => ${sso}"
 
     # If VPN => Traefik rule should redirect to gluetun container
     backendHost=${name}
@@ -464,6 +484,11 @@ EOF
     middlewareCount=0
     if [[ ${httpAuth} == "true" ]]; then
       echo "http.routers.${ruleId}.middlewares.${middlewareCount}: common-auth@file" >> rules.props
+      ((middlewareCount=middlewareCount+1))
+    fi
+
+    if [[ ${sso} == "true" ]]; then
+      echo "http.routers.${ruleId}.middlewares.${middlewareCount}: chain-authelia@file" >> rules.props
       ((middlewareCount=middlewareCount+1))
     fi
 

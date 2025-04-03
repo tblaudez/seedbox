@@ -15,6 +15,7 @@ config.yaml
 services/custom/*.yaml
 services/custom/*.yml
 services/generated/*.yaml
+services/secrets/
 
 authelia/*
 .env.custom
