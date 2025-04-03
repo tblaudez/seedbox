@@ -6,10 +6,10 @@ services:
     volumes:
       - ombi-config:/config
     environment:
-      - PGID=${PGID}
-      - PUID=${PUID}
-      - TZ=${TZ}
-      - BASE_URL=/
+      PGID: ${PGID}
+      PUID: ${PUID}
+      TZ: ${TZ}
+      BASE_URL: /
 
 volumes:
   ombi-config:

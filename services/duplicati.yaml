@@ -4,9 +4,9 @@ services:
     container_name: duplicati
     restart: unless-stopped
     environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
     volumes:
       - duplicati-config:/config
       - backups:/backups

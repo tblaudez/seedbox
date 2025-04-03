@@ -3,9 +3,9 @@ services:
     image: linuxserver/nextcloud
     container_name: nextcloud
     environment:
-      - PGID=${PGID}
-      - PUID=${PUID}
-      - TZ=${TZ}
+      PGID: ${PGID}
+      PUID: ${PUID}
+      TZ: ${TZ}
     volumes:
       - nextcloud-config:/config
       - nextcloud-data:/data

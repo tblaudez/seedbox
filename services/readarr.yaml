@@ -9,9 +9,9 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /data/config/readarr/scraper/certs/bookinfo-club.crt:/etc/ssl/certs/bookinfo-club.crt
     environment:
-      - PGID=${PGID}
-      - PUID=${PUID}
-      - TZ=${TZ}
+      PGID: ${PGID}
+      PUID: ${PUID}
+      TZ: ${TZ}
 
 volumes:
   readarr-config: 

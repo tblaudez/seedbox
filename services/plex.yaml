@@ -7,10 +7,10 @@ services:
       - plex-config:/config
       - media:/data/media
     environment:
-      - PGID=${PGID}
-      - PUID=${PUID}
-      - TZ=${TZ}
-      - VERSION=docker
+      PGID: ${PGID}
+      PUID: ${PUID}
+      TZ: ${TZ}
+      VERSION: docker
     shm_size: '4GB'
 
 volumes:
