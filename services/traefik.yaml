@@ -6,8 +6,8 @@ services:
     command:
       - --certificatesresolvers.le.acme.email=${ACME_MAIL}
     ports:
-      - "80:80"
-      - "443:443"
+      - "8080:80"
+      - "8443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./traefik:/etc/traefik:ro
@@ -15,9 +15,6 @@ services:
     environment:
       - TRAEFIK_DOMAIN=${TRAEFIK_DOMAIN}
       - TZ=${TZ}
-    networks:
-      default:
-        ipv4_address: 172.18.0.250
 
 volumes:
   traefik-config:

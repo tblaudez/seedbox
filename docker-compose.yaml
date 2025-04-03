@@ -6,9 +6,6 @@
 networks: 
   default:
     name: "traefik-network"
-    ipam:
-      config:
-        - subnet: 172.18.0.0/16
 
 
 # Common volumes used by at least 2 services

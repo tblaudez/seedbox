@@ -33,7 +33,7 @@ entryPoints:
         certResolver: le
       middlewares:
         - security-headers@file
-        - crowdsec@file
+        # - crowdsec@file
 
 # Allow self-signed certificates for https backends (nextcloud for example)
 serversTransport:
@@ -47,8 +47,8 @@ certificatesResolvers:
         # used during the challenge
         entryPoint: insecure
 
-experimental:
-  plugins:
-    bouncer:
-      moduleName: github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
-      version: v1.4.1
+# experimental:
+#   plugins:
+#     bouncer:
+#       moduleName: github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
+#       version: v1.4.1

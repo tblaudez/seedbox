@@ -520,9 +520,9 @@ ${DOCKER_COMPOSE_BINARY} --env-file ${GLOBAL_ENV_FILE} ${ALL_SERVICES} up -d --r
 echo "[$0] ***** Done updating containers *****"
 rm -f .env.concat
 
-echo "[$0] ***** Clean unused images and volumes... *****"
-docker image prune -af
-docker volume prune  -f
+# echo "[$0] ***** Clean unused images and volumes... *****"
+# docker image prune -af
+# docker volume prune  -f
 
 echo "[$0] ***** Done! *****"
 exit 0
