@@ -1,16 +1,23 @@
+secrets:
+  wireguard_private_key:
+    file: 'services/secrets/gluetun/WIREGUARD_PRIVATE_KEY'
+  wireguard_addresses:
+    file: 'services/secrets/gluetun/WIREGUARD_ADDRESSES'
+
 services:
   gluetun:
     image: ghcr.io/qdm12/gluetun
     container_name: gluetun
-    restart: unless-stopped
     cap_add:
       - NET_ADMIN
     devices:
       - /dev/net/tun:/dev/net/tun
+    secrets: ['wireguard_private_key', 'wireguard_addresses']
     environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+    restart: unless-stopped
 
 volumes:
   gluetun-config:

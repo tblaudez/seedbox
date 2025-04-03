@@ -15,6 +15,9 @@ services:
       USERMAP_GID: ${PGID}
       PAPERLESS_TIME_ZONE: ${TZ}
       PAPERLESS_URL: https://paperless.${TRAEFIK_DOMAIN}
+      PAPERLESS_ENABLE_HTTP_REMOTE_USER: true
+      PAPERLESS_HTTP_REMOTE_USER_HEADER_NAME: HTTP_REMOTE_USER
+      PAPERLESS_LOGOUT_REDIRECT_URL: https://sso.${TRAEFIK_DOMAIN}/logout
     depends_on:
       - paperless-postgres
       - paperless-redis
