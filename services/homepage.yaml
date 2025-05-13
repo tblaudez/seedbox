@@ -5,11 +5,12 @@ services:
     restart: always
     volumes:
       - homepage-config:/app/config
-      - /var/run/docker.sock:/var/run/docker.sock
+    secrets: ['AUDIOBOOKSHELF_API_KEY', 'IMMICH_API_KEY', 'KOMGA_API_KEY', 'LIDARR_API_KEY', 'OVERSEERR_API_KEY', 'PLEX_TOKEN', 'PROWLARR_API_KEY', 'RADARR_API_KEY', 'SABNZBD_API_KEY', 'SONARR_API_KEY', 'UN1K0RN_USER', 'UN1K0RN_PASSWORD']
     environment:
+      HOMEPAGE_ALLOWED_HOSTS: homepage.${TRAEFIK_DOMAIN}
+      LOG_LEVEL: debug
       PGID: ${PGID}
       PUID: ${PUID}
-      TZ: ${TZ}
 
 volumes:
   homepage-config:
