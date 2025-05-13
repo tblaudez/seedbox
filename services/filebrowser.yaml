@@ -12,7 +12,7 @@ services:
       PUID: ${PUID}
       TZ: ${TZ}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8234/health"]
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 30s
       timeout: 20s
       retries: 3
