@@ -2,6 +2,35 @@
 ## Services are now located in separate files, in the services directory.  ##
 #############################################################################
 
+# Common secrets used by some services
+secrets:
+  AUDIOBOOKSHELF_API_KEY:
+    file: 'services/secrets/common/AUDIOBOOKSHELF_API_KEY'
+  IMMICH_API_KEY:
+    file: 'services/secrets/common/IMMICH_API_KEY'
+  KOMGA_API_KEY:
+    file: 'services/secrets/common/KOMGA_API_KEY'
+  LIDARR_API_KEY:
+    file: 'services/secrets/common/LIDARR_API_KEY'
+  OVERSEERR_API_KEY:
+    file: 'services/secrets/common/OVERSEERR_API_KEY'
+  PROWLARR_API_KEY:
+    file: 'services/secrets/common/PROWLARR_API_KEY'
+  RADARR_API_KEY:
+    file: 'services/secrets/common/RADARR_API_KEY'
+  SABNZBD_API_KEY:
+    file: 'services/secrets/common/SABNZBD_API_KEY'
+  SONARR_API_KEY:
+    file: 'services/secrets/common/SONARR_API_KEY'
+  PLEX_TOKEN:
+    file: 'services/secrets/common/PLEX_TOKEN'
+  UN1K0RN_USER:
+    file: 'services/secrets/common/UN1K0RN_USER'
+  UN1K0RN_PASSWORD:
+    file: 'services/secrets/common/UN1K0RN_PASSWORD'
+  
+
+
 # Common network used by all services
 networks: 
   default:
