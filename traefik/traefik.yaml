@@ -1,6 +1,5 @@
 api:
   dashboard: true
-
 # Set Access logs timezone
 accessLog:
   format: json
@@ -12,8 +11,7 @@ accessLog:
     headers:
       defaultMode: drop # drop all headers per default
       names:
-          User-Agent: keep # log user agent strings
-
+        User-Agent: keep # log user agent strings
 providers:
   docker:
     endpoint: "tcp://socket-proxy:2375"
@@ -22,7 +20,6 @@ providers:
   file:
     directory: /etc/traefik/custom
     watch: true
-
 entryPoints:
   insecure:
     address: ":80"
@@ -34,19 +31,16 @@ entryPoints:
       middlewares:
         - security-headers@file
         - crowdsec@file
-
 # Allow self-signed certificates for https backends (nextcloud for example)
 serversTransport:
   insecureSkipVerify: true
-
 certificatesResolvers:
   le:
     acme:
       storage: /config/acme.json
-      httpChallenge:
-        # used during the challenge
-        entryPoint: insecure
-
+      dnsChallenge:
+        provider: ovh
+        delayBeforeCheck: "0"
 experimental:
   plugins:
     bouncer:

@@ -506,6 +506,7 @@ EOF
     if [[ ${httpOnly} == true ]]; then
       echo "http.routers.${ruleId}.entryPoints.0: insecure" >> rules.props
     else
+      echo "http.routers.${ruleId}.tls.certresolver: le" >> rules.props
       echo "http.routers.${ruleId}.middlewares.${middlewareCount}: redirect-to-https" >> rules.props
       ((middlewareCount=middlewareCount+1))
     fi
@@ -548,8 +549,8 @@ echo "[$0] ***** Done updating containers *****"
 rm -f .env.concat
 
 echo "[$0] ***** Clean unused images and volumes... *****"
-docker image prune -af
-docker volume prune  -f
+# docker image prune -af
+# docker volume prune  -f
 
 echo "[$0] ***** Done! *****"
 exit 0
