@@ -2,7 +2,6 @@ services:
   traefik:
     image: traefik
     container_name: traefik
-    restart: unless-stopped
     command:
       - --certificatesresolvers.le.acme.email=${ACME_MAIL}
     ports:
@@ -15,6 +14,14 @@ services:
     environment:
       TRAEFIK_DOMAIN: ${TRAEFIK_DOMAIN}
       TZ: ${TZ}
+    networks:
+      default:
+        ipv4_address: 172.18.0.250
+    depends_on:
+      - socket-proxy
+      - crowdsec
+      - authelia
+    restart: unless-stopped
 
 volumes:
   traefik-config:
