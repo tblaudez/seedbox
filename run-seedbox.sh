@@ -1,556 +1,311 @@
 #!/bin/bash
 
-set -e
-
-# Check that jq is installed
-if ! which jq >/dev/null; then
-  echo "[$0] jq does not exist. Install it from here: https://stedolan.github.io/jq/download/"
-  echo "[$0] Please install jq version 1.5 or above."
-  echo "[$0] Also, please make sure it is in the PATH."
-  exit 1
-fi
-
-# Check that yq is installed
-if ! which yq >/dev/null; then
-  echo "[$0] yq does not exist. Install it from here: https://github.com/mikefarah/yq/releases"
-  echo "[$0] Please install yq version 4 or above."
-  echo "[$0] Also, please make sure it is in the PATH."
-  exit 1
-fi
+set -eEuo pipefail
 
 SKIP_PULL=0
 DEBUG=0
+TMP_FOLDER=$(mktemp -d -p. .seedbox-tmp.XXX)
+CONFIG_JSON_FILE="$TMP_FOLDER/config.json"
 
-for i in "$@"; do
-  case $i in
+# Docker-compose settings
+export COMPOSE_HTTP_TIMEOUT=240
+
+for ARG in "$@"; do
+    case "$ARG" in
     --no-pull)
-      SKIP_PULL=1
-      ;;
+        SKIP_PULL=1
+        ;;
     --debug)
-      DEBUG=1
-      ;;
+        DEBUG=1
+        ;;
     *)
-      echo "[$0] ❌ ERROR: unknown parameter \"$i\""
-      exit 1
-      ;;
-  esac
+        fatal "Unknown parameter '$ARG'"
+        ;;
+    esac
 done
 
+# shellcheck disable=SC2329
 cleanup_on_exit() {
-  rm -f rules.props *-vpn.props *-envfile.props config.json
-  [[ -d env ]] && rm -f env/*.tmp
+  rm -rf -- "$TMP_FOLDER"
 }
 trap cleanup_on_exit EXIT
 
-echo-debug() {
-  if [[ ${DEBUG} == "1" ]]; then echo "$@"; fi
+fatal() {
+    echo "[-] ❌ ERROR:" "$@" 1>&2
+    exit 1
 }
 
-###############################################################################################
-####################################### Load variables ########################################
-###############################################################################################
+echo-debug() {
+    if [[ "$DEBUG" == "1" ]]; then
+        echo "$@" >&2
+    fi
+}
 
-echo "[$0] ***** Checking environment variables and files... *****"
+preflight_checks() {
+    if [[ ! -f .env ]]; then
+        fatal "No 'env' file found."
+    fi
 
-if [[ ! -f .env ]]; then
-  echo "[$0] ERROR. \".env\" file not found. Please copy \".env.sample\" and edit its values. Then, re-run this script."
-  exit 1
-fi
+    if [[ ! -f .env.custom ]]; then
+        fatal "No '.env.custom' file found."
+    fi
 
-if [[ ! -f .env.custom ]]; then
-  echo "[$0] ERROR. \".env.custom\" file not found. Please copy \".env.custom.sample\" and edit its values. Be aware that since v2.2 update, some variables from .env must be moved to .env.custom. When done, re-run this script."
-  exit 1
-fi
+    if [[ ! -f docker-compose.yaml ]]; then
+        fatal "No 'docker-compose.yaml' file found."
+    fi
 
-if [[ ! -f docker-compose.yaml ]]; then
-  echo "[$0] ERROR. \"docker-compose.yaml\" file not found. Please copy \"docker-compose.sample.yaml\" and edit its values if you need customization. Then, re-run this script."
-  exit 1
-fi
-
-# Check if there are obsolete config still in .env but should be moved to .env.custom
-if grep -qE "^(MYSQL_|WIREGUARD_|NEXTCLOUD_|PORTAINER_|PAPERLESS_|FLOOD_PASSWORD|CALIBRE_PASSWORD).*" .env; then
-  echo "/!\ Some obsolete config has been detected in your .env."
-  echo "It should be moved in .env.custom as they apply to specific app (this is new since v2.2 update - see documentation)."
-  echo ""
-  echo "Please refer to the .env.custom file to see which variables should be ported to the new file."
-  echo "Exiting now as bad configuration for your services may break your config."
-  echo ""
-  echo "Run this script again when variables has been moved to the correct file."
-  read -r -p "Do you want more explanation (Y/n) ? " help_wanted
-  if [[ "$help_wanted" =~ ^([yY][eE][sS]|[yY])$ ]]
-  then
-      echo -e "These are the variables you must move to .env.custom:\n"
-      echo "  Variables starting by \"MYSQL_\" (if there are some) ==> Add prefix MARIADB_ in .env.custom"
-      echo "  Variables starting by \"NEXTCLOUD_\" (if there are some) ==> Add another NEXTCLOUD_ prefix in .env.custom"
-      echo "  Variables starting by \"PAPERLESS_\" (if there are some) => Add another PAPERLESS_ prefix in .env.custom"
-      echo "  Variables starting by \"PORTAINER_\" (if there are some) ==> Add another PORTAINER_ prefix in .env.custom"
-      echo "  Variable named \"FLOOD_PASSWORD\" (if existing) ==> Add another FLOOD_ prefix in .env.custom"
-      echo "  Variable named \"CALIBRE_PASSWORD\" (if existing) ==> Add another CALIBRE_ prefix in .env.custom"
-      echo "  Variable named \"WIREGUARD_ENDPOINT\" (if existing) ==> Replace by GLUETUN_VPN_ENDPOINT_IP in .env.custom"
-      echo "  Variable named \"WIREGUARD_PORT\" (if existing) ==> Replace by GLUETUN_VPN_ENDPOINT_PORT in .env.custom"
-      echo "  Variable named \"WIREGUARD_PUBLIC_KEY\" (if existing) ==> Replace by GLUETUN_WIREGUARD_PUBLIC_KEY in .env.custom"
-      echo "  Variable named \"WIREGUARD_PRIVATE_KEY\" (if existing) ==> Replace by GLUETUN_WIREGUARD_PRIVATE_KEY in .env.custom"
-      echo "  Variable named \"WIREGUARD_PRESHARED_KEY\" (if existing) ==> Replace by GLUETUN_WIREGUARD_PRESHARED_KEY in .env.custom"
-      echo "  Variable named \"WIREGUARD_ADDRESS\" (if existing) ==> Replace by GLUETUN_WIREGUARD_ADDRESSES (**plural!**) in .env.custom"
-  else
-      echo "Ok bye."
-  fi
-  exit 1
-fi
-
-# Create/update http_auth file according to values in .env file
-source .env
-echo "${HTTP_USER}:${HTTP_PASSWORD}" > traefik/http_auth
-
-if [[ ! -d env ]]; then
-  mkdir -p env
-fi
+    if [[ ! -f config.yaml ]]; then
+        fatal "No 'config.yaml' file found."
+    fi
+}
 
 # Sanitize and extract variable (without prefixes) from .env.custom file
 # Input => $1 = app name (exemple traefik)
 # Output => env/app_name.env written with correct variables (exemple: env/traefik.env)
 extract_custom_env_file() {
+  local app_name="$1"
+  
+  if [[ -z "$app_name" ]]; then
+    fatal "extract_custom_env_file: app_name argument is empty or not provided"
+  fi
+  
+  local app_prefix="${app_name^^}_"
+  local output_file="env/${app_name}.env"
+  
   # sed explanation:
-  #   1 => Remove all lines starting with a comment (#)
-  #   2 => Remove all empty lines
-  #   3 => Remove all lines *NOT* starting by [uppercase_app_name + "_"] (exemple TRAEFIK_)
-  #   4 => Remove the pattern [uppercase_app_name + "_"]
-  sed '/^#/d' .env.custom | sed '/^$/d' | sed -n "/^${1^^}_/p" | sed "s/^${1^^}_//g" > env/$1.env
-}
-
-## Traefik Certificate Resolver tweaks
-if [[ ! -z ${TRAEFIK_CUSTOM_ACME_RESOLVER} ]]; then
-  if [[ ! -f .env.custom ]]; then
-    echo "[$0] Error. You need to have a .env.custom in order to use TRAEFIK_CUSTOM_ACME_RESOLVER variable."
-    exit 1
-  fi
-  if [[ ${TRAEFIK_CUSTOM_ACME_RESOLVER} == "changeme" ]]; then
-    echo "[$0] Error. Wrong value for TRAEFIK_CUSTOM_ACME_RESOLVER variable."
-    exit 1
-  fi
-  yq 'del(.certificatesResolvers.le.acme.httpChallenge)' -i traefik/traefik.yaml
-  yq '(.certificatesResolvers.le.acme.dnsChallenge.provider="'${TRAEFIK_CUSTOM_ACME_RESOLVER}'")' -i traefik/traefik.yaml
-  extract_custom_env_file traefik
-fi
-
-# Docker-compose settings
-export COMPOSE_HTTP_TIMEOUT=240
-
-# Retro-compatibility
-[[ -z $HOST_CONFIG_PATH ]] && export HOST_CONFIG_PATH="/data/config"
-[[ -z $HOST_MEDIA_PATH ]] && export HOST_MEDIA_PATH="/data/torrents"
-[[ -z $DOWNLOAD_SUBFOLDER ]] && export DOWNLOAD_SUBFOLDER="deluge"
-[[ -z $DOCKER_COMPOSE_BINARY ]] && export DOCKER_COMPOSE_BINARY="docker-compose"
-
-if [[ ! -f config.yaml ]]; then
-  echo "[$0] No config.yaml file found. Copying from sample file..."
-  cp config.sample.yaml config.yaml
-fi
-
-###############################################################################################
-###################################### Pre-flight checks ######################################
-###############################################################################################
-
-echo "[$0] ***** Checking configuration... *****"
-
-yq eval -o json config.yaml > config.json
-
-if [[ "${CHECK_FOR_OUTDATED_CONFIG}" == true ]]; then
-  nb_services=$(cat config.json | jq '.services | length')
-  nb_services_sample=$(yq eval -o json config.sample.yaml | jq '.services | length')
-  if [[ $nb_services_sample -gt $nb_services ]]; then
-    echo "[$0] There are more services in the config.sample.yaml than in your config.yaml"
-    echo "[$0] You should check config.sample.yaml because it seems there are new services available for you:"
-    diff -u config.yaml config.sample.yaml | grep "name:" | grep -E "^\+" | sed "s/+  - name:/-/g" || true
-  fi
-fi
-
-# Internal function which checks another function's number ($2) and return a boolean instead
-check_result_service() {
-  #$1 => service
-  #$2 => nb to check
-  if [[ $2 == 0 ]]; then
-    false; return
-  elif [[ $2 == 1 ]]; then
-    true; return
-  else
-    echo "[$0] Error. Service \"$1\" is enabled more than once. Check your config.yaml file."
-    exit 1
-  fi
+  #   1 => Keep only lines starting with [uppercase_app_name + "_"] (example: TRAEFIK_)
+  #   2 => Remove the pattern [uppercase_app_name + "_"] and print the result
+  sed -n -e "/^${app_prefix}/s/^${app_prefix}//p" .env.custom > "$output_file"
 }
 
 # Check if a service ($1) has been enabled in the config file
 is_service_enabled() {
-  local nb=$(cat config.json | jq --arg service $1 '[.services[] | select(.name==$service and .enabled==true)] | length')
-  check_result_service $1 $nb
+    local service="$1" count
+
+    count=$(jq --arg service "$service" '[.services[] | select(.name==$service and .enabled==true)] | length' "$CONFIG_JSON_FILE")
+    
+    case "$count" in
+        0) return 1 ;;
+        1) return 0 ;;
+        *) fatal "Service \"$service\" is enabled more than once. Check your config.yaml file." ;;
+    esac
 }
 
-# Check if a service ($1) has been enabled AND has vpn enabled in the config file
-has_vpn_enabled() {
-  local nb=$(cat config.json | jq --arg service $1 '[.services[] | select(.name==$service and .enabled==true and .vpn==true)] | length')
-  check_result_service $1 $nb
+is_gluetun_enabled() {
+    local count
+
+    # Check if some services have vpn enabled, that gluetun itself is enabled
+    count=$(jq '[.services[] | select(.enabled==true and .vpn==true)] | length' "$CONFIG_JSON_FILE")
+    
+    if [[ ${count} -gt 0 ]] && ! is_service_enabled gluetun; then
+        fatal "${count} VPN-enabled services have been enabled BUT gluetun has not been enabled. Please check your config.yaml file."
+    fi
 }
 
-# Check if some services have vpn enabled, that gluetun itself is enabled
-nb_vpn=$(cat config.json | jq '[.services[] | select(.enabled==true and .vpn==true)] | length')
-if [[ ${nb_vpn} -gt 0 ]] && ! is_service_enabled gluetun; then
-  echo "[$0] ERROR. ${nb_vpn} VPN-enabled services have been enabled BUT gluetun has not been enabled. Please check your config.yaml file."
-  exit 1
-fi
+is_authelia_enabled() {
+    local count
 
-# Check if some services have authelia enabled, that authelia itself is enabled
-nb_sso=$(cat config.json | jq '[.services[] | select(.enabled==true and .traefik.rules[].sso==true)] | length')
-authelia_enabled=$(cat config.json | jq '[.services[] | select(.name=="authelia" and .enabled==true)] | length')
-if [[ ${nb_sso} -gt 0 && ${authelia_enabled} == 0 ]]; then
-  echo "[$0] ERROR. ${nb_sso} Authelia-enabled services have been enabled BUT authelia itself has not been enabled. Please check your config.yaml file."
-  echo "[$0] ******* Exiting *******"
-  exit 1
-fi
+    # Check if some services have sso enabled, that authelia itself is enabled
+    count=$(jq '[.services[] | select(.enabled==true and .traefik.rules[].sso==true)] | length' "$CONFIG_JSON_FILE")
+   
+    if [[ ${count} -gt 0 ]] && ! is_service_enabled authelia; then
+        fatal "${count} Authelia-enabled services have been enabled BUT authelia itself has not been enabled. Please check your config.yaml file."
+    fi
+}
 
-# Check that for a same rule, httpAuth and authelia are not both enabled
-# TODO: fix the condition to allow multiple auth on multiple Traefik rules for a service
-nb_both_auth=$(cat config.json | jq '[.services[] | select(.traefik.rules[].httpAuth==true and .traefik.rules[].sso==true)] | length')
-if [[ ${nb_both_auth} -gt 0 ]]; then
-  echo "[$0] ERROR. ${nb_both_auth} services have both SSO/Authelia and HTTP Authentication enabled. Please choose only one for a rule."
-  echo "[$0] ******* Exiting *******"
-  exit 1
-fi
+is_sso_not_mixed_with_httpAuth() {
+    local count
 
-# Determine what host Flood should connect to
-# => If deluge vpn is enabled => gluetun
-# => If deluge vpn is disabled => deluge
-if is_service_enabled flood; then
-  # Check that if flood is enabled, deluge should also be enabled
-  if ! is_service_enabled deluge; then
-    echo "[$0] ERROR. Flood is enabled but Deluge is not. Please either enable Deluge or disable Flood as Flood depends on Deluge."
-    exit 1
-  fi
-  # Determine deluge hostname (for flood) based on the VPN status (enabled or not) of deluge
-  if has_vpn_enabled deluge; then
-    export DELUGE_HOST="gluetun"
-  else
-    export DELUGE_HOST="deluge"
-  fi
-fi
+    # Check that for a same rule, httpAuth and authelia are not both enabled
+    count=$(jq '[.services[] | select(.traefik.rules[].httpAuth==true and .traefik.rules[].sso==true)] | length' "$CONFIG_JSON_FILE")
+    if [[ ${count} -gt 0 ]]; then
+        fatal "${count} services have both SSO/Authelia and HTTP Authentication enabled. Please choose only one for a rule."
+    fi
+}
 
-# Check that if calibre-web is enabled, calibre should also be enabled
-if is_service_enabled calibre-web && ! is_service_enabled calibre; then
-  echo "[$0] ERROR. Calibre-web is enabled but Calibre is not. Please either enable Calibre or disable Calibre-web as Calibre-web depends on Calibre."
-  exit 1
-fi
+###############################################################################################
+####################################### MAIN ##################################################
+###############################################################################################
 
-# Check that if nextcloud is enabled, mariadb should also be enabled
-#if is_service_enabled nextcloud && ! is_service_enabled mariadb; then
-  #echo "[$0] ERROR. Nextcloud is enabled but MariaDB is not. Please either enable MariaDB or disable Nextcloud as Nextcloud depends on MariaDB."
-  #exit 1
-#fi
+preflight_checks
 
-# Apply other arbitrary custom Traefik config files
-rm -f $f traefik/custom/custom-*
-for f in `find samples/custom-traefik -maxdepth 1 -mindepth 1 -type f | grep -E "\.yml$|\.yaml$" | sort`; do
-  echo "[$0] Applying custom Traefik config $f..."
-  cp $f traefik/custom/custom-$(basename $f)
-done
+mkdir -p env
+#shellcheck disable=SC1091
+source .env
+yq eval -o json config.yaml > "$CONFIG_JSON_FILE"
 
-# Detect Synology devices for Netdata compatibility
-if is_service_enabled netdata; then
-  if [[ $(uname -a | { grep synology || true; } | wc -l) -eq 1 ]]; then
-    export OS_RELEASE_FILEPATH="/etc/VERSION"
-  else
-    export OS_RELEASE_FILEPATH="/etc/os-release"
-  fi
-fi
+is_gluetun_enabled
+is_authelia_enabled
+is_sso_not_mixed_with_httpAuth
 
 ###############################################################################################
 ####################################### SERVICES PARSING ######################################
 ###############################################################################################
 
-echo "[$0] ***** Generating configuration... *****"
-
-# Cleanup files before start, in case there was a change we start from scratch at every script execution
-rm -f services/generated/*-vpn.yaml
-rm -f services/generated/*-envfile.yaml
-
-ALL_SERVICES="-f docker-compose.yaml"
-
-GLOBAL_ENV_FILE=".env"
-
-# Parse the config.yaml master configuration file
-CONFIG_JSON=($(yq eval -o json config.yaml | jq -c ".services[]")) # Parenthesis to cast as Bash array
-CONFIG_JSON_INDEX=0
+echo "***** Generating configuration... *****"
 truncate -s0 "$HOME/.seedbox_services"
 
+ALL_SERVICES=("-f docker-compose.yaml")
+TOTAL_SERVICES=$(jq '.services | length' "$CONFIG_JSON_FILE")
+SERVICE_INDEX=0
 
-for json in "${CONFIG_JSON[@]}"; do
-  # Progress indicator with constant width
-  printf "[%s] ***** Processing [%02d / %02d] *****\r" "$0" "$((++CONFIG_JSON_INDEX))" "${#CONFIG_JSON[@]}"
-  # Break progress line if loop is ending
-  if [[ "$CONFIG_JSON_INDEX" -eq "${#CONFIG_JSON[@]}" ]]; then
-    echo ""
-  fi
-
-  name=$(echo $json | jq -r .name)
-  enabled=$(echo $json | jq -r .enabled)
-  vpn=$(echo $json | jq -r .vpn)
-
-  # Skip disabled services
-  if [[ ${enabled} == "false" ]]; then
-    echo-debug "[$0] Service $name is disabled. Skipping it."
-    continue
-  fi
-
-  echo-debug "[$0] ➡️  Parsing service: \"$name\"..."
-  printf "%s " "$name" >> "$HOME/.seedbox_services"
-
-  # Default docker-compose filename is the service name + .yaml.
-  # Take into account explicit filename if specified in config
-  customFile=$(echo $json | jq -r .customFile)
-  file="$name.yaml"
-  if [[ ${customFile} != "null" ]]; then 
-    file=${customFile}
-  fi
-  echo-debug "[$0]    File: \"$file\"..."
-
-  # Append $file to global list of files which will be passed to docker commands
-  ALL_SERVICES="${ALL_SERVICES} -f services/${file}"
-
-  # For services with VPN enabled, add a docker-compose "override" file specifying that the service network should
-  # go through gluetun (main vpn client service).
-  if [[ ${vpn} == "true" ]]; then
-    echo "services.${name}.network_mode: service:gluetun" > ${name}-vpn.props
-    yq -p=props ${name}-vpn.props -o yaml > services/generated/${name}-vpn.yaml
-    rm -f ${name}-vpn.props
-    # Append config/${name}-vpn.yaml to global list of files which will be passed to docker commands
-    ALL_SERVICES="${ALL_SERVICES} -f services/generated/${name}-vpn.yaml"
-  fi
-
-  # For services with existing custom environment variables in .env.custom, 
-  # Extract those variables and add a docker-compose override file in order to load them
-  if [[ -f .env.custom ]]; then
-    if grep -q "^${name^^}_.*" .env.custom; then
-      extract_custom_env_file ${name}
-      echo "services.${name}.env_file.0: ./env/${name}.env" > ${name}-envfile.props
-      yq -p=props ${name}-envfile.props -o yaml > services/generated/${name}-envfile.yaml
-      rm -f ${name}-envfile.props
-      # Append config/${name}-envfile.yaml to global list of files which will be passed to docker commands
-      ALL_SERVICES="${ALL_SERVICES} -f services/generated/${name}-envfile.yaml"
-    fi
-  fi
-
-  echo -n "$ALL_SERVICES" > "$HOME/.seedbox_files"
-
-  # If we are on flood service AND autoconfig for flood password is set to true:
-  # Check that .env.custom exists and variable defined
-  # Do the deluge autoconfig - we already checked that deluge is enabled at this point
-  if [[ ${name} == "flood" && ${FLOOD_AUTOCREATE_USER_IN_DELUGE_DAEMON} == true ]]; then
-    # Specific instructions for Flood
-    if [[ ! -f env/${name}.env ]]; then
-      echo "ERROR. You set variable \"FLOOD_AUTOCREATE_USER_IN_DELUGE_DAEMON\" to true but you did not specify key \"FLOOD_FLOOD_PASSWORD\" in your .env.custom."
-      exit 1
-    fi
-    set -a
-    source env/${name}.env
-    set +a
-    # User for Deluge daemon RPC has to be created in deluge auth config file
-    if [[ ! -z ${FLOOD_PASSWORD} ]]; then
-      DELUGE_CONFIG_FILE="$HOST_CONFIG_PATH/deluge/auth"
-      if [[ -r $DELUGE_CONFIG_FILE && -w $DELUGE_CONFIG_FILE ]]; then
-        if ! grep -q "flood" ${DELUGE_CONFIG_FILE}; then
-          echo "flood:${FLOOD_PASSWORD}:10" >> ${DELUGE_CONFIG_FILE}
-        else
-          echo "[$0] No need to add user/password for flood as it has already been created."
-          echo "[$0] Consider setting FLOOD_AUTOCREATE_USER_IN_DELUGE_DAEMON variable to false in .env file."
-        fi
-      else
-        echo "[$0] It seems you do not have permission to read or write to ${DELUGE_CONFIG_FILE} ."
-        echo "[$0] Prompting for sudo password..."
-        sudo bash <<- EOF
-          if ! grep -q "flood" ${DELUGE_CONFIG_FILE}; then
-            echo "flood:${FLOOD_PASSWORD}:10" >> ${DELUGE_CONFIG_FILE}
-          else
-            echo "[$0] No need to add user/password for flood as it has already been created."
-            echo "[$0] Consider setting FLOOD_AUTOCREATE_USER_IN_DELUGE_DAEMON variable to false in .env file."
-          fi
-EOF
-      fi
-    else
-      echo "ERROR. \"FLOOD_FLOOD_PASSWORD\" variable seems not defined but flood service still has variables defined. Please add the missing variable."
-      exit 1
-    fi
-  fi
-
-
-  ###### For services which have "command" field with environment variables ######
-  var_in_cmd_detected="0"
-  if [[ $(yq ".services.${name}.command[]" services/${file} | { grep "\\$.*\}" || true; } | wc -l) -gt 0 ]]; then
-    var_in_cmd_detected="1"
-    echo-debug "[$0] Service ${name} has a command with environment variables..."
-    # Extract variable names to test them
-    yq ".services.${name}.command[]" services/${file} | { grep "\\$.*\}" || true; } | sed -n -e 's/.*${\(\w\+\)}.*/\1/p' > env/${name}-cmd.env.1.tmp
-    (
-      # Check if these variables are defined in generated .env files (global or custom)
-      set -a
-      # Only source custom envfile if it exists
-      if [[ -f ./env/${name}.env ]]; then
-        source ./env/${name}.env
-      fi
-      source .env
-      set +a
-      while read p; do
-        # If the command references a variable which is not known, throw an error
-        if [[ -z ${!p+x} ]]; then
-          echo "ERROR. Variable \"$p\" is referenced in \"command\" for service ${name} (file $file) but this variable is not defined in .env (or in .env.custom with prefix \"${name^^}_\" if existing). Please correct it or add a variable which will be used."
-          exit 1
-        fi
-      done < env/${name}-cmd.env.1.tmp
-
-      # Does not work for now because of how docker handles merges for arrays. Original values with variables stay.
-      # Disabled for now
-      if [[ "0" == "1" ]]; then
-        # Extract command block from original service yaml file
-        yq ".services.${name}.command[]" services/${file} > env/${name}-cmd.env.2.tmp
-        # Envsubst this file
-        envsubst < env/${name}-cmd.env.2.tmp > env/${name}-cmd.env.3.tmp
-        # Convert this file to a props file, used to source a new proper YAML file
-        i=0
-        while read line; do
-          echo "services.${name}.command.$i: $line" >> env/${name}-cmd.env.4.tmp
-          i=$((i+1))
-        done < env/${name}-cmd.env.3.tmp
-        # Generate a proper override file with substituted variables
-        yq -p=props env/${name}-cmd.env.4.tmp -o yaml > services/generated/${name}-command.yaml
-      fi
-    )
-    rm -f env/*.tmp
-    # echo-debug "[$0] Adding override file for service ${name} / command with subsituted environment variables..."
-    # ALL_SERVICES="${ALL_SERVICES} -f services/generated/${name}-command.yaml"
-  fi
-
-  # Handle case for command in a single line, not in array
-  if [[ $(yq ".services.${name}.command" services/${file} | { grep "\\$.*\}" || true; } | wc -l) -gt 0 ]]; then
-    var_in_cmd_detected="1"
-  fi
-
-  # Workaround for now
-  if [[ "${var_in_cmd_detected}" == "1" ]]; then
-    # Only concat .env.concat with env/${name}.env if it exists
-    if [[ -f ./env/${name}.env ]]; then
-      cat ${GLOBAL_ENV_FILE} ./env/${name}.env >> .env.concat.tmp
-      rm -f .env.concat
-      mv .env.concat.tmp .env.concat
-      export GLOBAL_ENV_FILE=".env.concat"
-    fi
-    var_in_cmd_detected="0"
-  fi
-
-  ###################################### TRAEFIK RULES ######################################
-
-  # Skip this part for services which have Traefik rules disabled in config
-  traefikEnabled=$(echo $json | jq -r .traefik.enabled)
-  if [[ ${traefikEnabled} == "false" ]]; then
-    echo-debug "[$0]    Traefik is disabled. Skipping rules creation..."
-    continue
-  fi
-
-  # Loop over all Traefik rules and create the corresponding entries in the generated rules.yaml
-  echo-debug "[$0]    Generating Traefik rules..."
-  i=0
-  for rule in $(echo $json | jq -c .traefik.rules[]); do
-    ((i=i+1))
-    host=$(echo $rule | jq -r .host)
-    internalPort=$(echo $rule | jq -r .internalPort)
-    httpAuth=$(echo $rule | jq -r .httpAuth)
-    sso=$(echo $rule | jq -r .sso)
-    echo-debug "[$0]      Host => ${host}"
-    echo-debug "[$0]      Internal Port => ${internalPort}"
-    echo-debug "[$0]      Http Authentication => ${httpAuth}"
-    echo-debug "[$0]      SSO => ${sso}"
-
-    # If VPN => Traefik rule should redirect to gluetun container
-    backendHost=${name}
-    [[ ${vpn} == "true" ]] && backendHost="gluetun"
-
-    # Handle custom scheme (default if non-specified is http)
-    internalScheme="http"
-    customInternalScheme=$(echo $rule | jq -r .internalScheme)
-    [[ ${customInternalScheme} != "null" ]] && internalScheme=${customInternalScheme}
-
-    # Transform the bash syntax into Traefik/go one => anything.${TRAEFIK_DOMAIN} to anything.{{ env "TRAEFIK_DOMAIN" }}
-    hostTraefik=$(echo ${host} | sed --regexp-extended 's/^(.*)(\$\{(.*)\})/\1\{\{ env "\3" \}\}/')
-
-    ruleId="${name}-${i}"
-    echo 'http.routers.'"${ruleId}"'.rule: Host(`'${hostTraefik}'`)' >> rules.props
-
-    middlewareCount=0
-    if [[ ${httpAuth} == "true" ]]; then
-      echo "http.routers.${ruleId}.middlewares.${middlewareCount}: common-auth@file" >> rules.props
-      ((middlewareCount=middlewareCount+1))
-    fi
-
-    if [[ ${sso} == "true" ]]; then
-      echo "http.routers.${ruleId}.middlewares.${middlewareCount}: chain-authelia@file" >> rules.props
-      ((middlewareCount=middlewareCount+1))
-    fi
-
-    traefikService=$(echo $rule | jq -r .service)
-    if [[ ${traefikService} != "null" ]]; then
-      echo "http.routers.${ruleId}.service: ${traefikService}" >> rules.props
-    else
-      echo "http.routers.${ruleId}.service: ${ruleId}" >> rules.props
-    fi
-
-    # Check if httpOnly flag is enabled
-    # If enabled => Specify to use only "insecure" (port 80) entrypoint
-    # If not => use all entryPoints (by not specifying any) but force redirection to https
-    httpOnly=$(echo $rule | jq -r .httpOnly)
-    if [[ ${httpOnly} == true ]]; then
-      echo "http.routers.${ruleId}.entryPoints.0: insecure" >> rules.props
-    else
-      echo "http.routers.${ruleId}.tls.certresolver: le" >> rules.props
-      echo "http.routers.${ruleId}.middlewares.${middlewareCount}: redirect-to-https" >> rules.props
-      ((middlewareCount=middlewareCount+1))
-    fi
-
-    # If the specified service does not contain a "@" => we create it
-    # If the service has a @, it means it is defined elsewhere so we do not create it (custom file, @internal...)
-    if echo ${traefikService} | grep -vq "@"; then
-      echo "http.services.${ruleId}.loadBalancer.servers.0.url: ${internalScheme}://${backendHost}:${internalPort}" >> rules.props
+while read -r json; do
+    # Progress indicator with constant width
+    printf "***** Processing [%02d / %02d] *****\r" "$((++SERVICE_INDEX))" "$TOTAL_SERVICES"
+    # Break progress line if loop is ending
+    if [[ "$SERVICE_INDEX" -eq "$TOTAL_SERVICES" ]]; then
+        echo ""
     fi
     
-  done
-done
+    enabled=$(jq -r .enabled <<< "$json")
+    # Skip disabled services
+    if [[ ${enabled} == "false" ]]; then
+        echo-debug "Service $name is disabled. Skipping it."
+        continue
+    fi
 
-# Convert properties files into Traefik-ready YAML and place it in the correct folder loaded by Traefik
-mv traefik/custom/dynamic-rules.yaml traefik/custom/dynamic-rules-old.yaml || true
-yq -p=props rules.props -o yaml > traefik/custom/dynamic-rules.yaml
-rm -f rules.props
+    name=$(jq -r .name <<< "$json")
+    file="$name.yaml"
+    vpn=$(jq -r .vpn <<< "$json")
+    customFile=$(jq -r .customFile <<< "$json")
 
-# Post-transformations on the rules file
-# sed -i "s/EMPTYMAP/{}/g" traefik/custom/dynamic-rules.yaml
-# Add simple quotes around Host rule
-sed -i --regexp-extended "s/^(.*: )(Host.*$)/\1'\2'/g" traefik/custom/dynamic-rules.yaml
-# Add double quotes around the backend traefik service
-sed -i --regexp-extended "s/^(.*url: )(.*$)/\1\"\2\"/g" traefik/custom/dynamic-rules.yaml
+    if [[ ${customFile} != "null" ]]; then 
+        file=${customFile}
+    fi
 
-rm -f traefik/custom/dynamic-rules-old.yaml
+    echo-debug "➡️ Parsing service: '$name' with file: '$file'..."
+    echo -n "$name " >> "$HOME/.seedbox_services"
 
-echo-debug "[$0] Here is the list of all files which are going to be processed: ${ALL_SERVICES}"
+    # Append $file to global list of files which will be passed to docker commands
+    ALL_SERVICES+=("-f services/${file}")
 
-echo "[$0] ***** Config OK. Launching services... *****"
+    # For services with VPN enabled, add a docker-compose "override" file specifying that the service network should
+    # go through gluetun (main vpn client service).
+    if [[ ${vpn} == "true" ]]; then
+        yq -p=props -o yaml <<< "services.${name}.network_mode: service:gluetun" > "services/generated/${name}-vpn.yaml"
+        # Append config/${name}-vpn.yaml to global list of files which will be passed to docker commands
+        ALL_SERVICES+=("-f services/generated/${name}-vpn.yaml")
+    fi
 
-if [[ "${SKIP_PULL}" != "1" ]]; then
-  echo "[$0] ***** Pulling all images... *****"
-  ${DOCKER_COMPOSE_BINARY} ${ALL_SERVICES} pull
+    # For services with existing custom environment variables in .env.custom, 
+    # Extract those variables and add a docker-compose override file in order to load them
+    if grep -q "^${name^^}_" .env.custom; then
+        extract_custom_env_file "${name}"
+        yq -p=props -o yaml <<< "services.${name}.env_file.0: ./env/${name}.env" > "services/generated/${name}-envfile.yaml"
+        # Append config/${name}-envfile.yaml to global list of files which will be passed to docker commands
+        ALL_SERVICES+=("-f services/generated/${name}-envfile.yaml")
+    fi
+
+    echo -n "${ALL_SERVICES[@]}" > "$HOME/.seedbox_files"
+
+    ###################################### TRAEFIK RULES ######################################
+
+    # Skip this part for services which have Traefik rules disabled in config
+    traefikEnabled=$(jq -r .traefik.enabled <<< "$json")
+    if [[ ${traefikEnabled} == "false" ]]; then
+        echo-debug "Traefik is disabled. Skipping rules creation..."
+        continue
+    fi
+
+    # Loop over all Traefik rules and create the corresponding entries in the generated rules.yaml
+    echo-debug "Generating Traefik rules..."
+    TRAEFIK_RULES_INDEX=0
+    RULES_PROPS_FILE="$TMP_FOLDER/rules.props"
+    while read -r rule; do
+        host=$(jq -r .host <<< "$rule")
+        internalPort=$(jq -r .internalPort <<< "$rule")
+        httpAuth=$(jq -r .httpAuth <<< "$rule")
+        sso=$(jq -r .sso <<< "$rule")
+        
+        backendHost=${name}
+        internalScheme="http"
+        customInternalScheme=$(jq -r .internalScheme <<< "$rule")
+
+        if [[ ${vpn} == "true" ]]; then
+            backendHost="gluetun"
+        fi
+        if [[ ${customInternalScheme} != "null" ]]; then
+            internalScheme=${customInternalScheme}
+        fi
+
+        # Transform the bash syntax into Traefik/go one => anything.${TRAEFIK_DOMAIN} to anything.{{ env "TRAEFIK_DOMAIN" }}
+        prefix="${host%.\$\{*}"
+        # shellcheck disable=SC2089
+        hostTraefik="${prefix}.{{ env \"TRAEFIK_DOMAIN\" }}"
+
+        ruleId="${name}-$((++TRAEFIK_RULES_INDEX))"
+        echo "http.routers.${ruleId}.rule: Host(\`${hostTraefik}\`)" >> "$RULES_PROPS_FILE"
+
+        middlewareCount=0
+        if [[ ${httpAuth} == "true" ]]; then
+            echo "http.routers.${ruleId}.middlewares.$((middlewareCount++)): common-auth@file" >> "$RULES_PROPS_FILE"
+        fi
+        if [[ ${sso} == "true" ]]; then
+            echo "http.routers.${ruleId}.middlewares.$((middlewareCount++)): chain-authelia@file" >> "$RULES_PROPS_FILE"
+        fi
+
+        traefikService=$(jq -r .service <<< "$rule")
+        if [[ ${traefikService} != "null" ]]; then
+            echo "http.routers.${ruleId}.service: ${traefikService}" >> "$RULES_PROPS_FILE"
+        else
+            echo "http.routers.${ruleId}.service: ${ruleId}" >> "$RULES_PROPS_FILE"
+        fi
+
+        # Check if httpOnly flag is enabled
+        # If enabled => Specify to use only "insecure" (port 80) entrypoint
+        # If not => use all entryPoints (by not specifying any) but force redirection to https
+        httpOnly=$(jq -r .httpOnly <<< "$rule")
+        if [[ ${httpOnly} == true ]]; then
+            echo "http.routers.${ruleId}.entryPoints.0: insecure" >> "$RULES_PROPS_FILE"
+        else
+            echo "http.routers.${ruleId}.tls.certresolver: le" >> "$RULES_PROPS_FILE"
+            echo "http.routers.${ruleId}.middlewares.$((middlewareCount++)): redirect-to-https" >> "$RULES_PROPS_FILE"
+        fi
+
+        # If the specified service does not contain a "@" => we create it
+        # If the service has a @, it means it is defined elsewhere so we do not create it (custom file, @internal...)
+        if grep -vq "@" <<< "${traefikService}"; then
+            echo "http.services.${ruleId}.loadBalancer.servers.0.url: ${internalScheme}://${backendHost}:${internalPort}" >> "$RULES_PROPS_FILE"
+        fi
+    done < <(jq -c '.traefik.rules[]' <<< "$json")
+done < <(jq -c '.services[]' "$CONFIG_JSON_FILE")
+
+###############################################################################################
+####################################### TRAEFIK ###############################################
+###############################################################################################
+
+## Traefik Certificate Resolver tweaks
+if [[ ! -z ${TRAEFIK_CUSTOM_ACME_RESOLVER} ]]; then
+    if [[ ${TRAEFIK_CUSTOM_ACME_RESOLVER} == "changeme" ]]; then
+        fatal "Wrong value for TRAEFIK_CUSTOM_ACME_RESOLVER variable."
+    fi
+
+    yq 'del(.certificatesResolvers.le.acme.httpChallenge)' -i traefik/traefik.yaml
+    yq "(.certificatesResolvers.le.acme.dnsChallenge.provider=\"$TRAEFIK_CUSTOM_ACME_RESOLVER\")" -i traefik/traefik.yaml
 fi
 
-echo "[$0] ***** Recreating containers if required... *****"
-${DOCKER_COMPOSE_BINARY} --env-file ${GLOBAL_ENV_FILE} ${ALL_SERVICES} up -d --remove-orphans
-echo "[$0] ***** Done updating containers *****"
-rm -f .env.concat
+echo -n "${HTTP_USER}:${HTTP_PASSWORD}" > traefik/http_auth
+yq -p=props "$RULES_PROPS_FILE" -o yaml > traefik/custom/dynamic-rules.yaml
 
-echo "[$0] ***** Clean unused images and volumes... *****"
-# docker image prune -af
-# docker volume prune  -f
+###############################################################################################
+####################################### DOCKER ################################################
+###############################################################################################
+
+# shellcheck disable=SC2068
+docker compose ${ALL_SERVICES[@]} config -q
+
+if [[ "${SKIP_PULL}" != "1" ]]; then
+    echo "***** Pulling all images... *****"
+    # shellcheck disable=SC2068
+    docker compose ${ALL_SERVICES[@]} pull
+fi
+
+echo "***** Recreating containers if required... *****"
+# shellcheck disable=SC2068
+docker compose --env-file .env ${ALL_SERVICES[@]} up -d --remove-orphans
+
+docker image prune -af &>/dev/null & disown
+docker volume prune -f &>/dev/null & disown
 
 echo "[$0] ***** Done! *****"
 exit 0
