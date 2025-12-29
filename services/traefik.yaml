@@ -14,12 +14,8 @@ services:
     environment:
       TRAEFIK_DOMAIN: ${TRAEFIK_DOMAIN}
       TZ: ${TZ}
-    networks:
-      default:
-        ipv4_address: 172.18.0.250
     depends_on:
       - socket-proxy
-      - crowdsec
       - authelia
     restart: unless-stopped
 

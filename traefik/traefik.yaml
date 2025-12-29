@@ -31,7 +31,6 @@ entryPoints:
       middlewares:
         - security-headers@file
         # - crowdsec@file
-
 # Allow self-signed certificates for https backends (nextcloud for example)
 serversTransport:
   insecureSkipVerify: true
@@ -39,10 +38,8 @@ certificatesResolvers:
   le:
     acme:
       storage: /config/acme.json
-      httpChallenge:
-        # used during the challenge
-        entryPoint: insecure
-
+      dnsChallenge:
+        provider: ovh
 # experimental:
 #   plugins:
 #     bouncer:
