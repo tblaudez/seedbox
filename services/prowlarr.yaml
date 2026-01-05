@@ -2,13 +2,23 @@ services:
   prowlarr:
     image: ghcr.io/linuxserver/prowlarr:develop
     container_name: prowlarr
-    restart: unless-stopped
+    depends_on:
+      - byparr
     volumes:
       - prowlarr-config:/config
     environment:
       PGID: ${PGID}
       PUID: ${PUID}
       TZ: ${TZ}
+    restart: unless-stopped
+  
+  byparr:
+    image: ghcr.io/thephaseless/byparr:main
+    container_name: byparr
+    init: true
+    environment:
+      TZ: ${TZ}
+    restart: unless-stopped
 
 volumes:
   prowlarr-config:
