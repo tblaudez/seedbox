@@ -6,6 +6,8 @@ SKIP_PULL=0
 DEBUG=0
 TMP_FOLDER=$(mktemp -d -p. .seedbox-tmp.XXX)
 CONFIG_JSON_FILE="$TMP_FOLDER/config.json"
+ENV_FOLDER="services/secrets/env"
+GENERATED_SERVICES_FOLDER="services/generated"
 
 # Docker-compose settings
 export COMPOSE_HTTP_TIMEOUT=240
@@ -63,19 +65,19 @@ preflight_checks() {
 # Input => $1 = app name (exemple traefik)
 # Output => env/app_name.env written with correct variables (exemple: env/traefik.env)
 extract_custom_env_file() {
-  local app_name="$1"
-  
-  if [[ -z "$app_name" ]]; then
-    fatal "extract_custom_env_file: app_name argument is empty or not provided"
-  fi
-  
-  local app_prefix="${app_name^^}_"
-  local output_file="env/${app_name}.env"
-  
-  # sed explanation:
-  #   1 => Keep only lines starting with [uppercase_app_name + "_"] (example: TRAEFIK_)
-  #   2 => Remove the pattern [uppercase_app_name + "_"] and print the result
-  sed -n -e "/^${app_prefix}/s/^${app_prefix}//p" .env.custom > "$output_file"
+    local app_name="$1"
+
+    if [[ -z "$app_name" ]]; then
+        fatal "extract_custom_env_file: app_name argument is empty or not provided"
+    fi
+
+    local app_prefix="${app_name^^}_"
+    local output_file="${ENV_FOLDER}/${app_name}.env"
+
+    # sed explanation:
+    #   1 => Keep only lines starting with [uppercase_app_name + "_"] (example: TRAEFIK_)
+    #   2 => Remove the pattern [uppercase_app_name + "_"] and print the result
+    sed -n -e "/^${app_prefix}/s/^${app_prefix}//p" .env.custom > "$output_file"
 }
 
 # Check if a service ($1) has been enabled in the config file
@@ -129,7 +131,6 @@ is_sso_not_mixed_with_httpAuth() {
 
 preflight_checks
 
-mkdir -p env
 #shellcheck disable=SC1091
 source .env
 yq eval -o json config.yaml > "$CONFIG_JSON_FILE"
@@ -138,12 +139,14 @@ is_gluetun_enabled
 is_authelia_enabled
 is_sso_not_mixed_with_httpAuth
 
+find "${ENV_FOLDER}" -type f -name "*.env" -delete
+find "${GENERATED_SERVICES_FOLDER}" -type f -name "*.yaml" -delete
+
 ###############################################################################################
 ####################################### SERVICES PARSING ######################################
 ###############################################################################################
 
 echo "***** Generating configuration... *****"
-truncate -s0 "$HOME/.seedbox_services"
 
 ALL_SERVICES=("-f docker-compose.yaml")
 TOTAL_SERVICES=$(jq '.services | length' "$CONFIG_JSON_FILE")
@@ -174,7 +177,6 @@ while read -r json; do
     fi
 
     echo-debug "➡️ Parsing service: '$name' with file: '$file'..."
-    echo -n "$name " >> "$HOME/.seedbox_services"
 
     # Append $file to global list of files which will be passed to docker commands
     ALL_SERVICES+=("-f services/${file}")
@@ -182,21 +184,33 @@ while read -r json; do
     # For services with VPN enabled, add a docker-compose "override" file specifying that the service network should
     # go through gluetun (main vpn client service).
     if [[ ${vpn} == "true" ]]; then
-        yq -p=props -o yaml <<< "services.${name}.network_mode: service:gluetun" > "services/generated/${name}-vpn.yaml"
+        yq -p=props -o yaml <<< "services.${name}.network_mode: service:gluetun" > "${GENERATED_SERVICES_FOLDER}/${name}-vpn.yaml"
         # Append config/${name}-vpn.yaml to global list of files which will be passed to docker commands
-        ALL_SERVICES+=("-f services/generated/${name}-vpn.yaml")
+        ALL_SERVICES+=("-f ${GENERATED_SERVICES_FOLDER}/${name}-vpn.yaml")
     fi
 
-    # For services with existing custom environment variables in .env.custom, 
-    # Extract those variables and add a docker-compose override file in order to load them
-    if grep -q "^${name^^}_" .env.custom; then
-        extract_custom_env_file "${name}"
-        yq -p=props -o yaml <<< "services.${name}.env_file.0: ./env/${name}.env" > "services/generated/${name}-envfile.yaml"
-        # Append config/${name}-envfile.yaml to global list of files which will be passed to docker commands
-        ALL_SERVICES+=("-f services/generated/${name}-envfile.yaml")
-    fi
+    SUBSERVICES=()
+    SUBSERVICE_INDEX=0
+    IFS=" " read -r -a SUBSERVICES <<< "$(docker compose -f "services/${file}" config --services --no-interpolate | tr '\n' ' ')"
 
-    echo -n "${ALL_SERVICES[@]}" > "$HOME/.seedbox_files"
+    for s_name in "${SUBSERVICES[@]}"; do
+        # For (sub)services with existing custom environment variables in .env.custom, 
+        # Extract those variables and add a docker-compose override file in order to load them
+        if grep -q "^${s_name^^}_" .env.custom; then
+            extract_custom_env_file "${s_name}"
+            if (( SUBSERVICE_INDEX++ == 0 )); then
+                yq -p=props -o yaml <<< "services.${s_name}.env_file.0: ${ENV_FOLDER}/${s_name}.env" > "${GENERATED_SERVICES_FOLDER}/${name}-envfile.yaml"
+                # Append config/${s_name}-envfile.yaml to global list of files which will be passed to docker commands
+                ALL_SERVICES+=("-f ${GENERATED_SERVICES_FOLDER}/${name}-envfile.yaml")
+            else
+                # Forcing top-key to be indented 
+                yq -p=props -o yaml <<< ".${s_name}.env_file.0: ${ENV_FOLDER}/${s_name}.env" | sed '1d' >> "${GENERATED_SERVICES_FOLDER}/${name}-envfile.yaml"
+            fi
+        fi
+    done
+    
+
+
 
     ###################################### TRAEFIK RULES ######################################
 
@@ -291,8 +305,15 @@ yq -p=props "$RULES_PROPS_FILE" -o yaml > traefik/custom/dynamic-rules.yaml
 ####################################### DOCKER ################################################
 ###############################################################################################
 
+truncate -s0 "$HOME/.seedbox_files"
+for arg in "${ALL_SERVICES[@]}"; do
+    # shellcheck disable=SC2086
+    set -- $arg
+    echo -n "$1 $(realpath "$2") " >> "$HOME/.seedbox_files"
+done
+
 # shellcheck disable=SC2068
-docker compose ${ALL_SERVICES[@]} config -q
+docker compose ${ALL_SERVICES[@]} config --services | tr '\n' ' ' > "$HOME/.seedbox_services"
 
 if [[ "${SKIP_PULL}" != "1" ]]; then
     echo "***** Pulling all images... *****"
