@@ -1,17 +1,33 @@
 api:
-  dashboard: true
+  dashboard: false
 # Set Access logs timezone
+log:
+  format: json
+  level: INFO
 accessLog:
+  filePath: /config/logs/traefik.log
   format: json
   filters:
     statusCodes:
       - "200-299"
       - "400-599"
+  # collect logs as in-memory buffer before writing into log file
+  bufferingSize: 0
   fields:
     headers:
       defaultMode: drop # drop all headers per default
       names:
         User-Agent: keep # log user agent strings
+metrics:
+  influxDB2:
+    address: http://influxdb:8086
+    token: "${INFLUXDB_TOKEN}"
+    org: "${INFLUXDB_ORG}"
+    bucket: "${INFLUXDB_BUCKET}"
+    addEntryPointsLabels: true
+    addRoutersLabels: true
+    addServicesLabels: true
+    pushInterval: 60s
 providers:
   docker:
     endpoint: "tcp://socket-proxy:2375"

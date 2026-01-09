@@ -325,8 +325,8 @@ echo "***** Recreating containers if required... *****"
 # shellcheck disable=SC2068
 docker compose --env-file .env ${ALL_SERVICES[@]} up -d --remove-orphans
 
-docker image prune -af &>/dev/null & disown
-docker volume prune -f &>/dev/null & disown
+docker image prune -f
+docker volume prune -f
 
 echo "[$0] ***** Done! *****"
 exit 0
