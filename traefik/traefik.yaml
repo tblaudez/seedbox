@@ -18,16 +18,6 @@ accessLog:
       defaultMode: drop # drop all headers per default
       names:
         User-Agent: keep # log user agent strings
-metrics:
-  influxDB2:
-    address: http://influxdb:8086
-    token: "${INFLUXDB_TOKEN}"
-    org: "${INFLUXDB_ORG}"
-    bucket: "${INFLUXDB_BUCKET}"
-    addEntryPointsLabels: true
-    addRoutersLabels: true
-    addServicesLabels: true
-    pushInterval: 60s
 providers:
   docker:
     endpoint: "tcp://socket-proxy:2375"
@@ -47,6 +37,9 @@ entryPoints:
       middlewares:
         - security-headers@file
         - crowdsec@file
+metrics:
+  prometheus:
+    entryPoint: insecure
 # Allow self-signed certificates for https backends (nextcloud for example)
 serversTransport:
   insecureSkipVerify: true

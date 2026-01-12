@@ -8,10 +8,10 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - ./traefik:/etc/traefik:ro
       - traefik-config:/config
     environment:
+      DOCKER_HOST: tcp://socket-proxy:2375
       TRAEFIK_DOMAIN: ${TRAEFIK_DOMAIN}
       TZ: ${TZ}
     networks:
@@ -22,9 +22,23 @@ services:
       - crowdsec
       - authelia
     restart: unless-stopped
+  
+  traefik-prometheus:
+    container_name: traefik-prometheus
+    image: prom/prometheus:latest
+    user: ${PUID}:${PGID}
+    command:
+      - "--config.file=/prometheus/prometheus.yml"
+    volumes:
+      - traefik-prometheus-config:/prometheus
+    restart: unless-stopped
 
 volumes:
   traefik-config:
     driver: local-persist
     driver_opts:
       mountpoint: $HOST_CONFIG_PATH/traefik
+  traefik-prometheus-config:
+    driver: local-persist
+    driver_opts:
+      mountpoint: $HOST_CONFIG_PATH/traefik-prometheus
